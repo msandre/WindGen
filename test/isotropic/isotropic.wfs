@@ -1,0 +1,10 @@
+WindFieldSimulation  
+{
+  Box { lx = 13350.    ly = 1000.    lz = 1000.    rx = 12    ry = 8    rz = 8 }
+
+  umean = 15.89  height = 25.    roughness = 0.037 
+
+  log roughness = 0.037
+
+  spectra = isotropic    conv = 0 
+}

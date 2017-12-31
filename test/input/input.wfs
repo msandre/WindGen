@@ -1,0 +1,11 @@
+WindFieldSimulation  
+{
+#  Box { lx=10.1   ly=1.   lz =1   rx=8   ry = 4   rz= 2}
+  Box {ly=1.   lz =1   rx=5   ry = 5   rz= 5 lx=+10.1 }
+
+  umean = 11.0	 height = +0.501    roughness=0.05
+
+  log roughness = 0.01
+
+  spectra = kaimal    conv = 0 
+}

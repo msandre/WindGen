@@ -1,0 +1,11 @@
+WindFieldSimulation  
+{
+  # these are the settings I am currently using for the Silsoe Cube test case.
+  Box { lx = 11520.0    ly = 90.0    lz = 45.0    rx = 14    ry = 7    rz = 6 }
+
+  umean = 14.677  height = 25.0  roughness = 0.03  conv = 1
+
+  log roughness = 0.01
+
+  spectra = kaimal
+}
