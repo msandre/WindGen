@@ -1,0 +1,14 @@
+fftw-3.3.3
+*.o
+*.a
+*.h5
+test/eigen/eigen
+test/herm2d/herm2d
+test/herm3d/herm3d
+test/hyp2f1/hyp2f1
+test/input/input
+test/isotropic/isotropic
+test/kaimal/kaimal
+test/rv/rv
+test/simiu/simiu
+hdf5_demo/hdf5_demo
