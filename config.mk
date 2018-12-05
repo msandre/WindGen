@@ -5,7 +5,7 @@ WFS_ROOT              := /software/user/windgen
 # ----------------------------------------------------------------------
 CC                    := gcc 
 FFTW_CONFIG_FLAGS     := --prefix=$(WFS_ROOT)/fftw-3.3.3/
-CFLAGS                := -O0 -I $(WFS_ROOT)/src -I $(WFS_ROOT)/fftw-3.3.3/include
+CFLAGS                := -O2 -ffast-math -freciprocal-math -I $(WFS_ROOT)/src -I $(WFS_ROOT)/fftw-3.3.3/include
 LDFLAGS               := -L $(WFS_ROOT)/src -L $(WFS_ROOT)/fftw-3.3.3/lib
 LDFLAGS               += -lwfs -lfftw3
 
