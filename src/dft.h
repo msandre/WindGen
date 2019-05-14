@@ -55,6 +55,8 @@ extern "C" {
 
 
   dft_t * dft_init             (dft_ptr_t nx, dft_ptr_t ny, dft_ptr_t nz);
+  
+  dft_t * dft_init2D           (dft_ptr_t nx, dft_ptr_t nz);
 
   void    dft_execute          (dft_t * dft);
 

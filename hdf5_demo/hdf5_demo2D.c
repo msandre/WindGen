@@ -18,6 +18,7 @@
 
 #ifdef HAVE_MPI
 #include <mpi.h>
+#include <stdio.h>
 #endif /* HAVE_MPI */
 #include "wfs.h"
 
@@ -25,6 +26,7 @@ int main(int argc, char *argv[])
 {
   wfs_t * sim;
   char err[WFS_ERROR_SIZE];
+  int rank = 0;
 
   // input file name expected as argument
   if (argc != 2)
@@ -36,30 +38,33 @@ int main(int argc, char *argv[])
 #ifdef HAVE_MPI
   MPI_Init(&argc, &argv);
   wfs_init_mpi();
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 #endif /* HAVE_MPI */
 
   // initialize wind field simulation
-  sim = wfs_init(argv[1], err);
+  sim = wfs_init2D(argv[1], err);
   if (sim == NULL) {
     printf("%s\n", err);
     return 1;
   }
 
   // generate wind
-  wfs_generate_wind(sim);
+  wfs_generate_wind2D(sim);
 
   // write data to HDF5 file
-  hio_write("windgen.h5", sim); // open file in ParaView with VisItPFLOTRANReader
+  hio_write2D("windgen2D.h5", sim); // only with VisItPixieReader
 
   // destroy simulation
-  wfs_destroy(sim);
+  wfs_destroy2D(sim);
+
+  if(rank == 0) {
+    printf("Finished!\n", rank);
+  }
 
 #ifdef HAVE_MPI
   wfs_finalize_mpi();
   MPI_Finalize();
 #endif /* HAVE_MPI */
-
-  printf("Finished!\n");
 
   return 0;
 }

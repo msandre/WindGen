@@ -35,7 +35,9 @@ extern "C" {
 
   typedef struct _wfs wfs_t;
   typedef struct _box box_t;
-  
+  // typedef struct _wfs2D wfs2D_t;
+  // typedef struct _box2D box2D_t;
+
   struct _wfs
   {
     /*< public >*/
@@ -55,6 +57,24 @@ extern "C" {
     double iso_spec_coef;
   };
 
+  // struct _wfs2D
+  // {
+  //   /*< public >*/
+  //   box_t * box;
+  //   double  umean, height, roughness;
+  //   double  log_roughness;
+  //   double  utau;
+  //   char    spectra[10];
+  //   int     conv;
+  //   dft_t * dft_x;
+  //   dft_t * dft_z;
+
+  //   /*< private >*/
+  //   double gamma;
+  //   double LL;
+  //   double iso_spec_coef;
+  // };
+
   struct _box
   {
     /*< public >*/
@@ -62,20 +82,37 @@ extern "C" {
     dft_ptr_t nx, ny, nz;
   };
 
+  // struct _box2D
+  // {
+  //   /*< public >*/
+  //   double lx, lz;
+  //   dft_ptr_t nx, nz;
+  // };
+
   void    wfs_init_mpi                 (void);
   void    wfs_finalize_mpi             (void);
 
   wfs_t * wfs_init                     (const char * file, char * err);
 
+  wfs_t * wfs_init2D                   (const char * file, char * err);
+
   void    wfs_generate_wind            (wfs_t * sim);
+
+  void    wfs_generate_wind2D          (wfs_t * sim);
 
   void    wfs_destroy                  (wfs_t * sim);
 
+  void    wfs_destroy2D                (wfs_t * sim);
+
   void    wfs_apply_spectrum           (wfs_t * sim);
+
+  void    wfs_apply_spectrum2D         (wfs_t * sim);
 
   void    wfs_sheared_spectrum         (wfs_t * sim, double kx, double ky, double kz, double * pkz0, double * pkk0, double * paxz, double * payz, double * pazz);
 
   void    wfs_apply_symmetry           (wfs_t * sim);
+
+  void    wfs_apply_symmetry2D         (wfs_t * sim);
 
   double  hyp2f1_series                (double a, double b, double c, double z);
   
@@ -85,7 +122,11 @@ extern "C" {
 
   void    hio_write                    (const char * file, wfs_t * sim);
 
+  void    hio_write2D                  (const char * file, wfs_t * sim);
+
   void    hio_fcopy                    (double * in, double * out, dft_ptr_t nx, dft_ptr_t ny, dft_ptr_t nz);
+
+  void    hio_fcopy2D                  (double * in, double * out, dft_ptr_t nx, dft_ptr_t nz);
 
 #ifdef __cplusplus
 }

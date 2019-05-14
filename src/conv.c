@@ -66,6 +66,34 @@ void conv_init(wfs_t * sim)
 }
 
 /**
+ * conv_init2D:
+ * Initialize the convolution arrays.
+ */
+void conv_init2D(wfs_t * sim)
+{
+  double   lx    = sim->box->lx;
+  double   lz    = sim->box->lz;
+  int      n     = CONV_SIZE;
+  int i;
+  double x, sinx;
+
+  dsy = 1. / ((double) n * lz); // good enough for now
+  dsz = fourpi / ((double) n * lz);
+  ds = fourpi / (2 * lx) * 1.1076 * dsz;
+  
+  // z-component
+  for (i = -(n-1)/2; i <= (n-1)/2; i++) {
+    if (i == 0) {
+      sinc2z[i + (n-1)/2] = 1.;
+    }
+    else {
+      x = (double) -i * dsz * lz / 2.;
+      sinc2z[i + (n-1)/2] = sin(x) * sin(x) / (x * x);
+    }
+  }
+}
+
+/**
  * conv_execute:
  * Substitute the dirac approximation with the more accurate convolution decomposition.
  */
@@ -104,6 +132,35 @@ void conv_execute(wfs_t * sim, double kx, double ky, double kz, double * pfx, do
 }
 
 /**
+ * conv_execute2D:
+ * Substitute the dirac approximation with the more accurate convolution decomposition.
+ */
+void conv_execute2D(wfs_t * sim, double kx, double kz, double * pfx, double * pfz)
+{
+  double a[2][2];
+  double cx, cy, cz;
+
+  a[0][0] = conv_integrate2D(sim, &phi11, kx, kz);
+  a[1][0] = conv_integrate2D(sim, &phi31, kx, kz);
+  a[0][1] = a[1][0];
+  a[1][1] = conv_integrate2D(sim, &phi33, kx, kz);
+    
+  conv_decompose2D(a);
+  
+  // real
+  cx = pfx[0];
+  cz = pfz[0];
+  pfx[0] = a[0][0] * cx + a[0][1] * cz;
+  pfz[0] = a[1][0] * cx + a[1][1] * cz;
+    
+  // imaginary
+  cx = pfx[1];
+  cz = pfz[1];
+  pfx[1] = a[0][0] * cx + a[0][1] * cz;
+  pfz[1] = a[1][0] * cx + a[1][1] * cz;
+}
+
+/**
  * conv_integrate:
  * Compute approximate convolution of spectral tensor component.
  */
@@ -121,6 +178,30 @@ double conv_integrate(wfs_t * sim, conv_func_ptr_t fptr, double kx, double ky, d
       sz = kz + (double) iz * dsz;
       
       val += (* fptr) (sim, kx, sy, sz) * sinc2y[iy + (n-1)/2] * sinc2z[iz + (n-1)/2];
+    }
+  }
+  
+  return val * ds;
+}
+
+/**
+ * conv_integrate2D:
+ * Compute approximate convolution of spectral tensor component.
+ */
+double conv_integrate2D(wfs_t * sim, conv_func_ptr_t fptr, double kx, double kz)
+{
+  int n = CONV_SIZE;
+  int iy, iz;
+  double sy, sz, val;
+
+  val = 0.;
+
+  for (iy = -(n-1)/2; iy <= (n-1)/2; iy++) {
+    sy = (double) iy * dsy;
+    for (iz = -(n-1)/2; iz <= (n-1)/2; iz++) {
+      sz = kz + (double) iz * dsz;
+      
+      val += (* fptr) (sim, kx, sy, sz) * sinc2z[iz + (n-1)/2];
     }
   }
   
@@ -152,6 +233,26 @@ void conv_decompose(double a[][3])
   a[0][2] = d[2] * v[0][2];
   a[1][2] = d[2] * v[1][2];
   a[2][2] = d[2] * v[2][2];
+}
+
+/**
+ * conv_decompose2D:
+ * Decompose a symmetric 2x2 matrix neglecting negative eigenvalues.
+ */
+void conv_decompose2D(double a[][2])
+{
+  double tr, det, sdet, denom;
+  double mp[2][2];
+
+  tr    = a[0][0] + a[1][1];
+  det   = a[0][0] * a[1][1] - a[0][1] * a[1][0];
+  sdet  = (det < 0.0) ? 0.0 : sqrt(det);
+  denom = sqrt(tr + 2. * sdet);
+
+  a[0][0] = (a[0][0] + sdet) / denom;
+  a[0][1] = a[0][1] / denom;
+  a[1][0] = a[0][1];
+  a[1][1] = (a[1][1] + sdet) / denom;
 }
 
 /**

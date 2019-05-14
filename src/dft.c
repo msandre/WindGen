@@ -62,6 +62,36 @@ dft_t * dft_init(dft_ptr_t nx, dft_ptr_t ny, dft_ptr_t nz)
   return dft;
 }
 
+/**
+ * dft_init:
+ * Initialize a 2-dimensional field for a complex-to-real inverse DFT.
+ */
+dft_t * dft_init2D(dft_ptr_t nx, dft_ptr_t nz)
+{
+  dft_ptr_t size;
+  dft_t * dft;
+
+  dft = (dft_t *) malloc( sizeof(dft_t) );
+
+#ifdef HAVE_MPI
+  size = fftw_mpi_local_size_2d(nx, nz/2 + 1, MPI_COMM_WORLD, &(dft->local_nx), &(dft->local_x_start));
+#else /* DON'T HAVE_MPI */
+  dft->local_nx = nx;
+  dft->local_x_start = 0;
+  size = nx * (nz/2 + 1);
+#endif /* HAVE_MPI */
+
+  dft->field = fftw_malloc( 2 * sizeof(double) * size );
+
+#ifdef HAVE_MPI
+  dft->plan = fftw_mpi_plan_dft_c2r_2d(nx, nz, dft->field, dft->field, MPI_COMM_WORLD, FFTW_ESTIMATE);
+#else /* DON'T HAVE_MPI */
+  dft->plan = fftw_plan_dft_c2r_2d(nx, nz, dft->field, dft->field, FFTW_ESTIMATE);
+#endif /* HAVE_MPI */
+
+  return dft;
+}
+
 void dft_execute(dft_t * dft)
 {
   fftw_execute(dft->plan);

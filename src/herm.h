@@ -53,7 +53,11 @@ extern "C" {
 
   herm_t *  herm_init           (dft_ptr_t nx, dft_ptr_t ny, dft_ptr_t local_x_start, dft_ptr_t local_nx);
 
+  herm_t *  herm_init2D         (dft_ptr_t nx, dft_ptr_t local_x_start, dft_ptr_t local_nx);
+
   void      herm_execute        (herm_t * herm);
+
+  void      herm_execute2D      (herm_t * herm);
 
   void      herm_destroy        (herm_t * herm);
 
