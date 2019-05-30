@@ -1,7 +1,7 @@
 WindFieldSimulation  
 {
-  # these are the settings I am currently using for the Silsoe Cube test case.
-  Box { lx = 1280.0    ly = 10.0    lz = 50.0    rx = 12    ry = 1    rz = 5 }
+  # Just some arbitrary parameters.
+  Box { lx = 1280.0    ly = 10.0    lz = 10.0    rx = 12    ry = 1    rz = 5 }
 
   umean = 14.677  height = 25.0  roughness = 0.03  conv = 1
 

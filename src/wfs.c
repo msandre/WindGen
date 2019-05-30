@@ -209,6 +209,9 @@ wfs_t * wfs_init2D(const char * file, char * err)
   char * lz_buf = reg_match(box_buf, "(\\{|\\s)lz\\s*=\\s*\\+?[0-9]+(\\.[0-9]*)?(\\}|\\s)");
   if (lz_buf == NULL) WFS_ERROR(err, "Input Error: Cannot find valid lz");
 
+  char * ly_buf = reg_match(box_buf, "(\\{|\\s)ly\\s*=\\s*\\+?[0-9]+(\\.[0-9]*)?(\\}|\\s)");
+  if (ly_buf == NULL) ly_buf = lz_buf; // in the 2D situation, ly refers to the interval over which to compute the y integral
+
   char * rz_buf = reg_match(box_buf, "(\\{|\\s)rz\\s*=\\s*[1-9]+[0-9]*(\\}|\\s)");
   if (rz_buf == NULL) WFS_ERROR(err, "Input Error: Cannot find valid rz");
 
@@ -233,6 +236,7 @@ wfs_t * wfs_init2D(const char * file, char * err)
   sim = (wfs_t *) malloc( sizeof(wfs_t) );
   sim->box = (box_t *) malloc( sizeof(box_t) );
   sim->box->lx = atof(strchr(lx_buf,'=') + 1);
+  sim->box->ly = atof(strchr(ly_buf,'=') + 1);
   sim->box->lz = atof(strchr(lz_buf,'=') + 1);
   r = atoi(strchr(rx_buf,'=') + 1);
   sim->box->nx = 1;
@@ -297,9 +301,8 @@ wfs_t * wfs_init2D(const char * file, char * err)
   free(wfs_buf);
   free(box_buf);
   free(lx_buf);
-  // free(ly_buf);
+  free(ly_buf);
   free(rx_buf);
-  // free(ry_buf);
   free(lz_buf);
   free(rz_buf);
   free(umean_buf);

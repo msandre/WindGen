@@ -77,7 +77,6 @@ void conv_init2D(wfs_t * sim)
   int i;
   double x, sinx;
 
-  dsy = 1. / ((double) n * lz); // good enough for now
   dsz = fourpi / ((double) n * lz);
   ds = fourpi / (2 * lx) * 1.1076 * dsz;
   
@@ -193,11 +192,11 @@ double conv_integrate2D(wfs_t * sim, conv_func_ptr_t fptr, double kx, double kz)
   int n = CONV_SIZE;
   int iy, iz;
   double sy, sz, val;
-
+  double ly    = sim->box->ly;
   val = 0.;
 
   for (iy = -(n-1)/2; iy <= (n-1)/2; iy++) {
-    sy = (double) iy * dsy;
+    sy = ((double) iy * 2 * ly ) / ((double) n - 1);
     for (iz = -(n-1)/2; iz <= (n-1)/2; iz++) {
       sz = kz + (double) iz * dsz;
       
