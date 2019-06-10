@@ -51,8 +51,12 @@ int main(int argc, char *argv[])
   // generate wind
   wfs_generate_wind2D(sim);
 
-  // write data to HDF5 file
-  hio_write2D("windgen2D.h5", sim); // only with VisItPixieReader
+  /* write data to HDF5 file
+   *
+   * This file can be viewed in ParaView if the built-in "reader" VisItPixieReader
+   * is selected. This is useful for visualization of the velocity fluctuations.
+   */
+  hio_write2D("windgen2D.h5", sim);
 
   // destroy simulation
   wfs_destroy2D(sim);

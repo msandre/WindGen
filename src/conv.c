@@ -36,7 +36,7 @@ void conv_init(wfs_t * sim)
   double   lz    = sim->box->lz;
   int      n     = CONV_SIZE;
   int i;
-  double x, sinx;
+  double x;
 
   dsy = fourpi / ((double) n * ly);
   dsz = fourpi / ((double) n * lz);
@@ -137,7 +137,7 @@ void conv_execute(wfs_t * sim, double kx, double ky, double kz, double * pfx, do
 void conv_execute2D(wfs_t * sim, double kx, double kz, double * pfx, double * pfz)
 {
   double a[2][2];
-  double cx, cy, cz;
+  double cx, cz;
 
   a[0][0] = conv_integrate2D(sim, &phi11, kx, kz);
   a[1][0] = conv_integrate2D(sim, &phi31, kx, kz);
@@ -186,13 +186,15 @@ double conv_integrate(wfs_t * sim, conv_func_ptr_t fptr, double kx, double ky, d
 /**
  * conv_integrate2D:
  * Compute approximate convolution of spectral tensor component.
+ * ly is used as the length over which to perform to the y-component integration.
+ * CONV_SIZE is the number of integration points.
  */
 double conv_integrate2D(wfs_t * sim, conv_func_ptr_t fptr, double kx, double kz)
 {
   int n = CONV_SIZE;
   int iy, iz;
   double sy, sz, val;
-  double ly    = sim->box->ly;
+  double ly = sim->box->ly;
   val = 0.;
 
   for (iy = -(n-1)/2; iy <= (n-1)/2; iy++) {
@@ -248,10 +250,10 @@ void conv_decompose2D(double a[][2])
   sdet  = (det < 0.0) ? 0.0 : sqrt(det);
   denom = sqrt(tr + 2. * sdet);
 
-  a[0][0] = (a[0][0] + sdet) / denom;
-  a[0][1] = a[0][1] / denom;
+  a[0][0] = (a[0][0] + sdet) * (1. / denom);
+  a[0][1] = a[0][1] * (1. / denom);
   a[1][0] = a[0][1];
-  a[1][1] = (a[1][1] + sdet) / denom;
+  a[1][1] = (a[1][1] + sdet) * (1. / denom);
 }
 
 /**
