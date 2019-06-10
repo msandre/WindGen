@@ -76,7 +76,7 @@ void conv_init2D(wfs_t * sim)
   double   lz    = sim->box->lz;
   int      n     = CONV_SIZE;
   int i;
-  double x, sinx;
+  double x;
 
   dsz = fourpi / ((double) n * lz);
   dsy = (2 * ly) / n;
