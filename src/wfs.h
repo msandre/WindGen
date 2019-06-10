@@ -35,9 +35,7 @@ extern "C" {
 
   typedef struct _wfs wfs_t;
   typedef struct _box box_t;
-  // typedef struct _wfs2D wfs2D_t;
-  // typedef struct _box2D box2D_t;
-
+  
   struct _wfs
   {
     /*< public >*/
@@ -57,37 +55,12 @@ extern "C" {
     double iso_spec_coef;
   };
 
-  // struct _wfs2D
-  // {
-  //   /*< public >*/
-  //   box_t * box;
-  //   double  umean, height, roughness;
-  //   double  log_roughness;
-  //   double  utau;
-  //   char    spectra[10];
-  //   int     conv;
-  //   dft_t * dft_x;
-  //   dft_t * dft_z;
-
-  //   /*< private >*/
-  //   double gamma;
-  //   double LL;
-  //   double iso_spec_coef;
-  // };
-
   struct _box
   {
     /*< public >*/
     double lx, ly, lz;
     dft_ptr_t nx, ny, nz;
   };
-
-  // struct _box2D
-  // {
-  //   /*< public >*/
-  //   double lx, lz;
-  //   dft_ptr_t nx, nz;
-  // };
 
   void    wfs_init_mpi                 (void);
   void    wfs_finalize_mpi             (void);

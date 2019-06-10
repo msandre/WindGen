@@ -72,13 +72,15 @@ void conv_init(wfs_t * sim)
 void conv_init2D(wfs_t * sim)
 {
   double   lx    = sim->box->lx;
+  double   ly    = sim->box->ly;
   double   lz    = sim->box->lz;
   int      n     = CONV_SIZE;
   int i;
   double x, sinx;
 
   dsz = fourpi / ((double) n * lz);
-  ds = fourpi / (2 * lx) * 1.1076 * dsz;
+  dsy = (2 * ly) / n;
+  ds = fourpi / (2 * lx) * 1.1076 * dsy * dsz;
   
   // z-component
   for (i = -(n-1)/2; i <= (n-1)/2; i++) {
