@@ -33,10 +33,10 @@ void dft_finalize_mpi(void)
 }
 
 /**
- * dft_init:
+ * dft_init3D:
  * Initialize a 3-dimensional field for a complex-to-real inverse DFT.
  */
-dft_t * dft_init(dft_ptr_t nx, dft_ptr_t ny, dft_ptr_t nz)
+dft_t * dft_init3D(dft_ptr_t nx, dft_ptr_t ny, dft_ptr_t nz)
 {
   dft_ptr_t size;
   dft_t * dft;
@@ -63,7 +63,7 @@ dft_t * dft_init(dft_ptr_t nx, dft_ptr_t ny, dft_ptr_t nz)
 }
 
 /**
- * dft_init:
+ * dft_init2D:
  * Initialize a 2-dimensional field for a complex-to-real inverse DFT.
  */
 dft_t * dft_init2D(dft_ptr_t nx, dft_ptr_t nz)

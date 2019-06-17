@@ -42,6 +42,10 @@ void wfs_finalize_mpi(void)
 /**
  * wfs_init:
  * Initialize a wind field simulation from an input file.
+ * 
+ * 2D wind fields are generated for the input parameter ry=0. In that case ly
+ * determines the interval for integrating out the y-component of the spectral
+ * tensor.
  */
 wfs_t * wfs_init(const char * file, char * err)
 {
@@ -67,7 +71,7 @@ wfs_t * wfs_init(const char * file, char * err)
   char * rx_buf = reg_match(box_buf, "(\\{|\\s)rx\\s*=\\s*[1-9]+[0-9]*(\\}|\\s)");
   if (rx_buf == NULL) WFS_ERROR(err, "Input Error: Cannot find valid rx");
 
-  char * ry_buf = reg_match(box_buf, "(\\{|\\s)ry\\s*=\\s*[1-9]+[0-9]*(\\}|\\s)");
+  char * ry_buf = reg_match(box_buf, "(\\{|\\s)ry\\s*=\\s*[0-9]+(\\}|\\s)");
   if (ry_buf == NULL) WFS_ERROR(err, "Input Error: Cannot find valid ry");
 
   char * lz_buf = reg_match(box_buf, "(\\{|\\s)lz\\s*=\\s*\\+?[0-9]+(\\.[0-9]*)?(\\}|\\s)");
@@ -109,9 +113,19 @@ wfs_t * wfs_init(const char * file, char * err)
   sim->box->nz = 1;
   for (i=0; i<r; i++) sim->box->nz = 2 * sim->box->nz;
   N = sim->box->nx * sim->box->ny * sim->box->nz;
-  sim->dft_x = dft_init(sim->box->nx, sim->box->ny, sim->box->nz);
-  sim->dft_y = dft_init(sim->box->nx, sim->box->ny, sim->box->nz);
-  sim->dft_z = dft_init(sim->box->nx, sim->box->ny, sim->box->nz);
+  if (is_2d(sim))
+  {
+    sim->dft_x = dft_init2D(sim->box->nx, sim->box->nz);
+    sim->dft_y = dft_init2D(sim->box->nx, sim->box->nz);
+    sim->dft_z = dft_init2D(sim->box->nx, sim->box->nz);
+  }
+  else
+  {
+    sim->dft_x = dft_init3D(sim->box->nx, sim->box->ny, sim->box->nz);
+    sim->dft_y = dft_init3D(sim->box->nx, sim->box->ny, sim->box->nz);
+    sim->dft_z = dft_init3D(sim->box->nx, sim->box->ny, sim->box->nz);
+  }
+  
   sim->umean = atof(strchr(umean_buf,'=') + 1);
   sim->height = atof(strchr(height_buf,'=') + 1);
   sim->roughness = atof(strchr(roughness_buf,'=') + 1);
@@ -160,7 +174,15 @@ wfs_t * wfs_init(const char * file, char * err)
 #endif /* HAVE_MPI */
 
   rv_init(rank);
-  conv_init(sim);
+  if (is_2d(sim))
+  {
+    conv_init2D(sim);
+  }
+  else
+  {
+    conv_init3D(sim);
+  }
+  
 
   free(fbuf);
   free(wfs_buf);
@@ -181,138 +203,9 @@ wfs_t * wfs_init(const char * file, char * err)
   return sim;
 }
 
-/**
- * wfs_init2D:
- * Initialize a wind field simulation from an input file.
- */
-wfs_t * wfs_init2D(const char * file, char * err)
+int is_2d(const wfs_t * sim)
 {
-  int i, r, pos, rank;
-  dft_ptr_t N;
-  wfs_t * sim;
-
-  char * fbuf = read_file(file, '#');
-  if (fbuf == NULL) WFS_ERROR(err, "Input Error: Cannot open file");
-
-  char * wfs_buf = reg_match(fbuf, "WindFieldSimulation\\s*\\{.*\\}");
-  if (wfs_buf == NULL) WFS_ERROR(err, "Input Error: Cannot find valid WindFieldSimulation block");
-
-  char * box_buf = reg_match(wfs_buf, "(\\{|\\s)Box\\s*\\{.*\\}");
-  if (box_buf == NULL) WFS_ERROR(err, "Input Error: Cannot find valid Box block");
-
-  char * lx_buf = reg_match(box_buf, "(\\{|\\s)lx\\s*=\\s*\\+?[0-9]+(\\.[0-9]*)?(\\}|\\s)");
-  if (lx_buf == NULL) WFS_ERROR(err, "Input Error: Cannot find valid valid lx");
-
-  char * rx_buf = reg_match(box_buf, "(\\{|\\s)rx\\s*=\\s*[1-9]+[0-9]*(\\}|\\s)");
-  if (rx_buf == NULL) WFS_ERROR(err, "Input Error: Cannot find valid rx");
-
-  char * lz_buf = reg_match(box_buf, "(\\{|\\s)lz\\s*=\\s*\\+?[0-9]+(\\.[0-9]*)?(\\}|\\s)");
-  if (lz_buf == NULL) WFS_ERROR(err, "Input Error: Cannot find valid lz");
-
-  char * ly_buf = reg_match(box_buf, "(\\{|\\s)ly\\s*=\\s*\\+?[0-9]+(\\.[0-9]*)?(\\}|\\s)");
-  if (ly_buf == NULL) ly_buf = lz_buf; // in the 2D situation, ly refers to the interval over which to compute the y integral
-
-  char * rz_buf = reg_match(box_buf, "(\\{|\\s)rz\\s*=\\s*[1-9]+[0-9]*(\\}|\\s)");
-  if (rz_buf == NULL) WFS_ERROR(err, "Input Error: Cannot find valid rz");
-
-  char * umean_buf = reg_match(wfs_buf, "(\\{|\\s)umean\\s*=\\s*\\+?[0-9]+(\\.[0-9]*)?(\\}|\\s)");
-  if (umean_buf == NULL) WFS_ERROR(err, "Input Error: Cannot find valid umean");
-
-  char * height_buf = reg_match(wfs_buf, "(\\{|\\s)height\\s*=\\s*\\+?[0-9]+(\\.[0-9]*)?(\\}|\\s)");
-  if (height_buf == NULL) WFS_ERROR(err, "Input Error: Cannot find valid height");
-
-  char * roughness_buf = reg_match(wfs_buf, "(\\{|\\s)roughness\\s*=\\s*\\+?[0-9]+(\\.[0-9]*)?(\\}|\\s)");
-  if (roughness_buf == NULL) WFS_ERROR(err, "Input Error: Cannot find valid roughness");
-
-  char * log_roughness_buf = reg_match(wfs_buf, "(\\{|\\s)log\\s*roughness\\s*=\\s*\\+?[0-9]+(\\.[0-9]*)?(\\}|\\s)");
-  if (log_roughness_buf == NULL) WFS_ERROR(err, "Input Error: Cannot find valid log roughness");
-
-  char * spectra_buf = reg_match(wfs_buf, "(\\{|\\s)spectra\\s*=\\s*[A-Za-z]+(\\}|\\s)");
-  if (spectra_buf == NULL) WFS_ERROR(err, "Input Error: Cannot find valid spectra");
-
-  char * conv_buf = reg_match(wfs_buf, "(\\{|\\s)conv\\s*=\\s*(0|1)(\\}|\\s)");
-  if (conv_buf == NULL) WFS_ERROR(err, "Input Error: Cannot find valid conv");
-
-  sim = (wfs_t *) malloc( sizeof(wfs_t) );
-  sim->box = (box_t *) malloc( sizeof(box_t) );
-  sim->box->lx = atof(strchr(lx_buf,'=') + 1);
-  sim->box->ly = atof(strchr(ly_buf,'=') + 1);
-  sim->box->lz = atof(strchr(lz_buf,'=') + 1);
-  r = atoi(strchr(rx_buf,'=') + 1);
-  sim->box->nx = 1;
-  for (i=0; i<r; i++) sim->box->nx = 2 * sim->box->nx;
-  r = atoi(strchr(rz_buf,'=') + 1);
-  sim->box->nz = 1;
-  for (i=0; i<r; i++) sim->box->nz = 2 * sim->box->nz;
-  N = sim->box->nx * sim->box->nz;
-  sim->dft_x = dft_init2D(sim->box->nx, sim->box->nz);
-  sim->dft_z = dft_init2D(sim->box->nx, sim->box->nz);
-  sim->umean = atof(strchr(umean_buf,'=') + 1);
-  sim->height = atof(strchr(height_buf,'=') + 1);
-  sim->roughness = atof(strchr(roughness_buf,'=') + 1);
-  sim->log_roughness = atof(strchr(log_roughness_buf,'=') + 1);
-
-  if (sim->height <= 0.) WFS_ERROR(err, "Input Error: Invalid height value");
-  if (sim->roughness <= 0.) WFS_ERROR(err, "Input Error: Invalid roughness value");
-  if (sim->log_roughness <= 0.) WFS_ERROR(err, "Input Error: Invalid log roughness value");
-  sim->utau = 0.41 * sim->umean / log(sim->height / sim->roughness);
-
-  pos = 0;
-  while(spectra_buf[pos]) {
-    spectra_buf[pos] = tolower(spectra_buf[pos]);
-    pos = pos + 1;
-  }
-  if (strstr(spectra_buf, "kaimal") != NULL) {
-    strcpy(sim->spectra, "kaimal");
-    sim->gamma = 3.9;
-    sim->LL = pow(0.59 * sim->height, 2);
-    sim->iso_spec_coef = 3.2 * sim->utau * sim->utau / pow(sim->height, 2./3.) * pow(sim->LL, 17./6.) / 12.566370614359172;
-    sim->conv = atoi(strchr(conv_buf,'=') + 1);
-  }
-  else if (strstr(spectra_buf, "simiu") != NULL) {
-    strcpy(sim->spectra, "simiu");
-    sim->gamma = 3.8;
-    sim->LL = pow(0.79 * sim->height, 2);
-    sim->iso_spec_coef = 2.8 * sim->utau * sim->utau / pow(sim->height, 2./3.) * pow(sim->LL, 17./6.) / 12.566370614359172;
-    sim->conv = atoi(strchr(conv_buf,'=') + 1);
-  }
-  else if (strstr(spectra_buf, "isotropic") != NULL) {
-    strcpy(sim->spectra, "isotropic");
-    sim->gamma = 0.;
-    sim->LL = pow(sim->height, 2);
-    sim->iso_spec_coef = sim->umean * sim->umean / pow(sim->height, 2./3.) * pow(sim->LL, 17./6.) / 12.566370614359172;
-    sim->conv = 0;
-  }
-  else {
-    wfs_destroy2D(sim);
-    WFS_ERROR(err, "Input Error: Unknown spectra");
-  }
-  
-#ifdef HAVE_MPI
-  MPI_Comm_rank(MPI_COMM_WORLD, &rank); 
-#else /* DON'T HAVE_MPI */
-  rank = 0;
-#endif /* HAVE_MPI */
-
-  rv_init(rank);
-  conv_init2D(sim);
-
-  free(fbuf);
-  free(wfs_buf);
-  free(box_buf);
-  free(lx_buf);
-  free(ly_buf);
-  free(rx_buf);
-  free(lz_buf);
-  free(rz_buf);
-  free(umean_buf);
-  free(height_buf);
-  free(roughness_buf);
-  free(log_roughness_buf);
-  free(spectra_buf);
-  free(conv_buf);
-
-  return sim;
+  return sim->box->ny == 1;
 }
 
 /**
@@ -334,51 +227,29 @@ void wfs_generate_wind(wfs_t * sim)
   // fill arrays with random complex numbers such that E[ZZ*] = 1
   size = 2 * local_nx * ny * (nz/2 + 1);
   rv_normal(fx, size);
-  rv_normal(fy, size);
+  if (!is_2d(sim))
+  {
+    rv_normal(fy, size);
+  }
   rv_normal(fz, size);
 
   // apply spectral tensor matrices
   wfs_apply_spectrum(sim);
 
   // apply Hermitian symmetry
-  wfs_apply_symmetry(sim);
-
-  // inverse dft
-  dft_execute(sim->dft_x);
-  dft_execute(sim->dft_y);
-  dft_execute(sim->dft_z);
-}
-
-/**
- * wfs_generate_wind2D:
- * Simulate 2D wind field fluctuations with desired second-order properties.
- */
-void wfs_generate_wind2D(wfs_t * sim)
-{
-  dft_ptr_t nx            = sim->box->nx;
-  dft_ptr_t nz            = sim->box->nz;
-  dft_ptr_t local_x_start = sim->dft_x->local_x_start;
-  dft_ptr_t local_nx      = sim->dft_x->local_nx;
-  double *  fcx            = sim->dft_x->field;
-  double *  fcz            = sim->dft_z->field;
-  dft_ptr_t size;
-
-  // fill arrays with random complex numbers such that E[ZZ*] = 1
-  size = 2 * local_nx * (nz/2 + 1);
-  rv_normal(fcx, size);
-  rv_normal(fcz, size);
-
-  // apply spectral tensor matrices
-  wfs_apply_spectrum2D(sim);
-
-  // apply Hermitian symmetry
-  wfs_apply_symmetry2D(sim);
+  wfs_apply_symmetry(sim, sim->dft_x);
+  wfs_apply_symmetry(sim, sim->dft_z);
 
   // inverse dft
   dft_execute(sim->dft_x);
   dft_execute(sim->dft_z);
-}
 
+  if (!is_2d(sim))
+  {
+    wfs_apply_symmetry(sim, sim->dft_y);
+    dft_execute(sim->dft_y);
+  }
+}
 
 void wfs_destroy(wfs_t * sim)
 {
@@ -389,19 +260,24 @@ void wfs_destroy(wfs_t * sim)
   free(sim);
 }
 
-void wfs_destroy2D(wfs_t * sim)
-{
-  free(sim->box);
-  dft_destroy(sim->dft_x);
-  dft_destroy(sim->dft_z);
-  free(sim);
-}
-
 /**
  * wfs_apply_spectrum:
  * Apply the isotropic/anisotropic transformation matrix.
  */
 void wfs_apply_spectrum(wfs_t * sim)
+{
+  if (is_2d(sim))
+  {
+    wfs_apply_spectrum2D(sim);
+  }
+  else
+  {
+    wfs_apply_spectrum3D(sim);
+  }
+  
+}
+
+void wfs_apply_spectrum3D(wfs_t * sim)
 {
   double       twopi         = 6.283185307179586;
   dft_ptr_t    nx            = sim->box->nx;
@@ -494,7 +370,7 @@ void wfs_apply_spectrum(wfs_t * sim)
 	ptr = iptr + jptr + k;
 	kk = kkx + kky + kz * kz;
 	if (conv == 1 && kk < 9.0 / sim->LL) {
-	  conv_execute(sim, kx, ky, kz, &fcx[ptr][0], &fcy[ptr][0], &fcz[ptr][0]);
+	  conv_execute3D(sim, kx, ky, kz, &fcx[ptr][0], &fcy[ptr][0], &fcz[ptr][0]);
 	}
 	else {
 	  wfs_sheared_spectrum(sim, kx, ky, kz, &kz0, &kk0, &axz, &ayz, &azz);
@@ -535,7 +411,7 @@ void wfs_apply_spectrum(wfs_t * sim)
 	ptr = iptr + jptr + k;
 	kk = kkx + kky + kz * kz;
 	if (conv == 1 && kk < 9.0 / sim->LL) {
-	  conv_execute(sim, kx, ky, kz, &fcx[ptr][0], &fcy[ptr][0], &fcz[ptr][0]);
+	  conv_execute3D(sim, kx, ky, kz, &fcx[ptr][0], &fcy[ptr][0], &fcz[ptr][0]);
 	}
 	else {
 	  wfs_sheared_spectrum(sim, kx, ky, kz, &kz0, &kk0, &axz, &ayz, &azz);
@@ -583,7 +459,7 @@ void wfs_apply_spectrum(wfs_t * sim)
 	ptr = iptr + jptr + k;
 	kk = kkx + kky + kz * kz;
 	if (conv == 1 && kk < 9.0 / sim->LL) {
-	  conv_execute(sim, kx, ky, kz, &fcx[ptr][0], &fcy[ptr][0], &fcz[ptr][0]);
+	  conv_execute3D(sim, kx, ky, kz, &fcx[ptr][0], &fcy[ptr][0], &fcz[ptr][0]);
 	}
 	else {
 	  wfs_sheared_spectrum(sim, kx, ky, kz, &kz0, &kk0, &axz, &ayz, &azz);
@@ -624,7 +500,7 @@ void wfs_apply_spectrum(wfs_t * sim)
 	ptr = iptr + jptr + k;
 	kk = kkx + kky + kz * kz;
 	if (conv == 1 && kk < 9.0 / sim->LL) {
-	  conv_execute(sim, kx, ky, kz, &fcx[ptr][0], &fcy[ptr][0], &fcz[ptr][0]);
+	  conv_execute3D(sim, kx, ky, kz, &fcx[ptr][0], &fcy[ptr][0], &fcz[ptr][0]);
 	}
 	else {
 	  wfs_sheared_spectrum(sim, kx, ky, kz, &kz0, &kk0, &axz, &ayz, &azz);
@@ -658,10 +534,6 @@ void wfs_apply_spectrum(wfs_t * sim)
   }  
 }
 
-/**
- * wfs_apply_spectrum2D:
- * Apply the isotropic/anisotropic transformation matrix.
- */
 void wfs_apply_spectrum2D(wfs_t * sim)
 {
   double       twopi         = 6.283185307179586;
@@ -774,27 +646,21 @@ void wfs_sheared_spectrum(wfs_t * sim, double kx, double ky, double kz, double *
  * wfs_apply_symmetry:
  * Make the complex fields have Hermitian symmetry.
  */
-void wfs_apply_symmetry(wfs_t * sim)
+void wfs_apply_symmetry(wfs_t * sim, dft_t * dft)
 {
   dft_ptr_t    nx            = sim->box->nx;
   dft_ptr_t    ny            = sim->box->ny;
   dft_ptr_t    nz            = sim->box->nz;
   dft_ptr_t    local_x_start = sim->dft_x->local_x_start;
   dft_ptr_t    local_nx      = sim->dft_x->local_nx;  
-  complex_t *  fcx           = sim->dft_x->field;
-  complex_t *  fcy           = sim->dft_y->field;
-  complex_t *  fcz           = sim->dft_z->field;
+  complex_t *  fc            = dft->field;
   dft_ptr_t i, j, k, l, iptr, jptr, ptr;
-  complex_t * slicex, * slicey, * slicez;
-  herm_t * hermx, * hermy, * hermz;
+  complex_t * slice;
+  herm_t * herm;
 
-  hermx = herm_init(nx, ny, local_x_start, local_nx);
-  hermy = herm_init(nx, ny, local_x_start, local_nx);
-  hermz = herm_init(nx, ny, local_x_start, local_nx);
+  herm = herm_init(nx, ny, local_x_start, local_nx);
 
-  slicex = hermx->slice;
-  slicey = hermy->slice;
-  slicez = hermz->slice;
+  slice = herm->slice;
 
   // set Hermitian planes k = 0
   k = 0;
@@ -805,17 +671,13 @@ void wfs_apply_symmetry(wfs_t * sim)
       ptr = iptr + jptr + k;
 
       for (l=0; l < 2; l++) {
-	slicex[i*ny + j][l] = fcx[ptr][l];
-	slicey[i*ny + j][l] = fcy[ptr][l];
-	slicez[i*ny + j][l] = fcz[ptr][l];
+        slice[i*ny + j][l] = fc[ptr][l];
       }
     }
   }
 
   // apply Hermitian symmetry k = 0
-  herm_execute(hermx);
-  herm_execute(hermy);
-  herm_execute(hermz);
+  herm_execute(herm);
 
   // copy Hermitian planes k = 0
   for (i=0; i < local_nx; i++) {
@@ -825,9 +687,7 @@ void wfs_apply_symmetry(wfs_t * sim)
       ptr = iptr + jptr + k;
 
       for (l=0; l < 2; l++) {
-	fcx[ptr][l] = slicex[i*ny + j][l];
-	fcy[ptr][l] = slicey[i*ny + j][l];
-	fcz[ptr][l] = slicez[i*ny + j][l];
+        fc[ptr][l] = slice[i*ny + j][l];
       }
     }
   }
@@ -841,17 +701,13 @@ void wfs_apply_symmetry(wfs_t * sim)
       ptr = iptr + jptr + k;
 
       for (l=0; l < 2; l++) {
-	slicex[i*ny + j][l] = fcx[ptr][l];
-	slicey[i*ny + j][l] = fcy[ptr][l];
-	slicez[i*ny + j][l] = fcz[ptr][l];
+        slice[i*ny + j][l] = fc[ptr][l];
       }
     }
   }
 
   // apply Hermitian symmetry k = nz/2
-  herm_execute(hermx);
-  herm_execute(hermy);
-  herm_execute(hermz);
+  herm_execute(herm);
 
   // copy Hermitian planes k = nz/2
   for (i=0; i < local_nx; i++) {
@@ -861,16 +717,12 @@ void wfs_apply_symmetry(wfs_t * sim)
       ptr = iptr + jptr + k;
 
       for (l=0; l < 2; l++) {
-	fcx[ptr][l] = slicex[i*ny + j][l];
-	fcy[ptr][l] = slicey[i*ny + j][l];
-	fcz[ptr][l] = slicez[i*ny + j][l];
+        fc[ptr][l] = slice[i*ny + j][l];
       }
     }
   }
 
-  herm_destroy(hermx);
-  herm_destroy(hermy);
-  herm_destroy(hermz);
+  herm_destroy(herm);
 }
 
 /**
@@ -880,6 +732,7 @@ void wfs_apply_symmetry(wfs_t * sim)
 void wfs_apply_symmetry2D(wfs_t * sim)
 {
   dft_ptr_t    nx            = sim->box->nx;
+  dft_ptr_t    ny            = sim->box->ny;
   dft_ptr_t    nz            = sim->box->nz;
   dft_ptr_t    local_x_start = sim->dft_x->local_x_start;
   dft_ptr_t    local_nx      = sim->dft_x->local_nx;  
@@ -889,8 +742,8 @@ void wfs_apply_symmetry2D(wfs_t * sim)
   complex_t * slicex, * slicey, * slicez;
   herm_t * hermx, * hermy, * hermz;
 
-  hermx = herm_init2D(nx, local_x_start, local_nx);
-  hermz = herm_init2D(nx, local_x_start, local_nx);
+  hermx = herm_init(nx, ny, local_x_start, local_nx);
+  hermz = herm_init(nx, ny, local_x_start, local_nx);
 
   slicex = hermx->slice;
   slicez = hermz->slice;
@@ -906,8 +759,8 @@ void wfs_apply_symmetry2D(wfs_t * sim)
   }
 
   // apply Hermitian symmetry k = 0
-  herm_execute2D(hermx);
-  herm_execute2D(hermz);
+  herm_execute(hermx);
+  herm_execute(hermz);
 
   // copy Hermitian planes k = 0
   for (i=0; i < local_nx; i++) {
@@ -929,8 +782,8 @@ void wfs_apply_symmetry2D(wfs_t * sim)
   }
 
   // apply Hermitian symmetry k = nz/2
-  herm_execute2D(hermx);
-  herm_execute2D(hermz);
+  herm_execute(hermx);
+  herm_execute(hermz);
 
   // copy Hermitian planes k = nz/2
   for (i=0; i < local_nx; i++) {
@@ -1028,8 +881,11 @@ void hio_write(const char * file, wfs_t * sim)
   dft_ptr_t    nz              = sim->box->nz;
   hid_t file_id, dset_id, dspace_id, dtype_id;
   hsize_t dim[3];
+  int ndim;
   herr_t status;
   double * dset;
+
+  ndim = (is_2d(sim)) ? 2 : 3;
 
 #ifdef HAVE_MPI
   hsize_t count[3];
@@ -1113,8 +969,16 @@ void hio_write(const char * file, wfs_t * sim)
   status = H5Pclose(plist_id);
 
   dim[0] = nx;
-  dim[1] = ny;
-  dim[2] = nz;
+  if (is_2d(sim))
+  {
+    dim[1] = nz;
+  }
+  else
+  {
+    dim[1] = ny;
+    dim[2] = nz;
+  }
+  
   count[0] = local_nx;
   count[1] = dim[1];
   count[2] = dim[2];
@@ -1125,10 +989,10 @@ void hio_write(const char * file, wfs_t * sim)
   // u
   plist_id = H5Pcreate(H5P_DATASET_XFER);
   H5Pset_dxpl_mpio(plist_id, H5FD_MPIO_COLLECTIVE);
-  fspace_id = H5Screate_simple(3, dim, NULL);
+  fspace_id = H5Screate_simple(ndim, dim, NULL);
   dset_id = H5Dcreate2(file_id, "/u", H5T_NATIVE_DOUBLE, fspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
   status = H5Sclose(fspace_id);
-  dspace_id = H5Screate_simple(3, count, NULL);
+  dspace_id = H5Screate_simple(ndim, count, NULL);
   hio_fcopy(fx, dset, local_nx, ny, nz);
   fspace_id = H5Dget_space(dset_id);
   H5Sselect_hyperslab(fspace_id, H5S_SELECT_SET, offset, NULL, count, NULL);
@@ -1138,23 +1002,26 @@ void hio_write(const char * file, wfs_t * sim)
   status = H5Dclose(dset_id);
 
   // v
-  fspace_id = H5Screate_simple(3, dim, NULL);
-  dset_id = H5Dcreate2(file_id, "/v", H5T_NATIVE_DOUBLE, fspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-  status = H5Sclose(fspace_id);
-  dspace_id = H5Screate_simple(3, count, NULL);
-  hio_fcopy(fy, dset, local_nx, ny, nz);
-  fspace_id = H5Dget_space(dset_id);
-  H5Sselect_hyperslab(fspace_id, H5S_SELECT_SET, offset, NULL, count, NULL);
-  status = H5Dwrite(dset_id, H5T_NATIVE_DOUBLE, dspace_id, fspace_id, plist_id, dset);
-  status = H5Sclose(fspace_id);
-  status = H5Sclose(dspace_id);
-  status = H5Dclose(dset_id);
+  if (!is_2d(sim))
+  {
+    fspace_id = H5Screate_simple(ndim, dim, NULL);
+    dset_id = H5Dcreate2(file_id, "/v", H5T_NATIVE_DOUBLE, fspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+    status = H5Sclose(fspace_id);
+    dspace_id = H5Screate_simple(ndim, count, NULL);
+    hio_fcopy(fy, dset, local_nx, ny, nz);
+    fspace_id = H5Dget_space(dset_id);
+    H5Sselect_hyperslab(fspace_id, H5S_SELECT_SET, offset, NULL, count, NULL);
+    status = H5Dwrite(dset_id, H5T_NATIVE_DOUBLE, dspace_id, fspace_id, plist_id, dset);
+    status = H5Sclose(fspace_id);
+    status = H5Sclose(dspace_id);
+    status = H5Dclose(dset_id);
+  }
 
   // w
-  fspace_id = H5Screate_simple(3, dim, NULL);
+  fspace_id = H5Screate_simple(ndim, dim, NULL);
   dset_id = H5Dcreate2(file_id, "/w", H5T_NATIVE_DOUBLE, fspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
   status = H5Sclose(fspace_id);
-  dspace_id = H5Screate_simple(3, count, NULL);
+  dspace_id = H5Screate_simple(ndim, count, NULL);
   hio_fcopy(fz, dset, local_nx, ny, nz);
   fspace_id = H5Dget_space(dset_id);
   H5Sselect_hyperslab(fspace_id, H5S_SELECT_SET, offset, NULL, count, NULL);
@@ -1226,9 +1093,16 @@ void hio_write(const char * file, wfs_t * sim)
   status = H5Sclose(dspace_id);
 
   dim[0] = nx;
-  dim[1] = ny;
-  dim[2] = nz;
-  dspace_id = H5Screate_simple(3, dim, NULL);
+  if (is_2d(sim))
+  {
+    dim[1] = nz;
+  }
+  else
+  {
+    dim[1] = ny;
+    dim[2] = nz;
+  }
+  dspace_id = H5Screate_simple(ndim, dim, NULL);
 
   // u
   dset_id = H5Dcreate2(file_id, "/u", H5T_NATIVE_DOUBLE, dspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
@@ -1237,220 +1111,17 @@ void hio_write(const char * file, wfs_t * sim)
   status = H5Dclose(dset_id);
 
   // v
-  dset_id = H5Dcreate2(file_id, "/v", H5T_NATIVE_DOUBLE, dspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-  hio_fcopy(fy, dset, nx, ny, nz);
-  status = H5Dwrite(dset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, dset);
-  status = H5Dclose(dset_id);
+  if (!is_2d(sim))
+  {
+    dset_id = H5Dcreate2(file_id, "/v", H5T_NATIVE_DOUBLE, dspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+    hio_fcopy(fy, dset, nx, ny, nz);
+    status = H5Dwrite(dset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, dset);
+    status = H5Dclose(dset_id);
+  }
 
   // w
   dset_id = H5Dcreate2(file_id, "/w", H5T_NATIVE_DOUBLE, dspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
   hio_fcopy(fz, dset, nx, ny, nz);
-  status = H5Dwrite(dset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, dset);
-  status = H5Dclose(dset_id);
-  status = H5Sclose(dspace_id);
-  status = H5Fclose(file_id);
-  free(dset);
-#endif /* HAVE_MPI */
-#endif /* HAVE_HDF5 */
-}
-
-
-/**
- * hio_write2D:
- * Write simulation data in HDF5.
- */
-void hio_write2D(const char * file, wfs_t * sim)
-{
-#ifdef HAVE_HDF5
-  double *     fx              = sim->dft_x->field;
-  double *     fz              = sim->dft_z->field;
-  dft_ptr_t    local_nx        = sim->dft_x->local_nx;
-  dft_ptr_t    local_x_start   = sim->dft_x->local_x_start;
-  dft_ptr_t    nx              = sim->box->nx;
-  dft_ptr_t    nz              = sim->box->nz;
-  hid_t file_id, dset_id, dspace_id, dtype_id;
-  hsize_t dim[2];
-  herr_t status;
-  double * dset;
-
-#ifdef HAVE_MPI
-  hsize_t count[3];
-  hsize_t offset[3];
-  hid_t fspace_id, plist_id;
-  int rank, nproc;
-
-  dset = (double *) malloc( sizeof(double) * local_nx * nz );
-
-  MPI_Comm_size(MPI_COMM_WORLD, &nproc);
-  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-
-  plist_id = H5Pcreate(H5P_FILE_ACCESS);
-  H5Pset_fapl_mpio(plist_id, MPI_COMM_WORLD, MPI_INFO_NULL);
-
-  file_id = H5Fcreate(file, H5F_ACC_TRUNC, H5P_DEFAULT, plist_id);
-  status = H5Pclose(plist_id);
-
-  // lx
-  dim[0] = 1;
-  plist_id = H5Pcreate(H5P_DATASET_XFER);
-  H5Pset_dxpl_mpio(plist_id, H5FD_MPIO_INDEPENDENT);
-  dspace_id = H5Screate_simple(1, dim, NULL);
-  dset_id = H5Dcreate2(file_id, "/lx", H5T_NATIVE_DOUBLE, dspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-  dset[0] = sim->box->lx;
-  if (rank == 0)
-    status = H5Dwrite(dset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, plist_id, dset);
-  status = H5Dclose(dset_id);
-
-  // lz
-  dset_id = H5Dcreate2(file_id, "/lz", H5T_NATIVE_DOUBLE, dspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-  dset[0] = sim->box->lz;
-  if (rank == 0)
-    status = H5Dwrite(dset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, plist_id, dset);
-  status = H5Dclose(dset_id);
-
-  // z
-  dset_id = H5Dcreate2(file_id, "/z", H5T_NATIVE_DOUBLE, dspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-  dset[0] = sim->height;
-  if (rank == 0)
-    status = H5Dwrite(dset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, plist_id, dset);
-  status = H5Dclose(dset_id);
-
-  // umean
-  dset_id = H5Dcreate2(file_id, "/umean", H5T_NATIVE_DOUBLE, dspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-  dset[0] = sim->umean;
-  if (rank == 0)
-    status = H5Dwrite(dset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, plist_id, dset);
-  status = H5Dclose(dset_id);
-  
-  // z0
-  dset_id = H5Dcreate2(file_id, "/z0", H5T_NATIVE_DOUBLE, dspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-  dset[0] = sim->roughness;
-  if (rank == 0)
-    status = H5Dwrite(dset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, plist_id, dset);
-  status = H5Dclose(dset_id);
-
-  // log_z0
-  dset_id = H5Dcreate2(file_id, "/log_z0", H5T_NATIVE_DOUBLE, dspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-  dset[0] = sim->log_roughness;
-  if (rank == 0)
-    status = H5Dwrite(dset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, plist_id, dset);
-  status = H5Dclose(dset_id);
-
-  // spectra
-  dtype_id = H5Tcopy(H5T_C_S1);
-  status = H5Tset_size(dtype_id, strlen(sim->spectra) + 1);
-  dset_id = H5Dcreate2(file_id, "/spectra", dtype_id, dspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-  if (rank == 0)
-    status = H5Dwrite(dset_id, dtype_id, H5S_ALL, H5S_ALL, plist_id, sim->spectra);
-  status = H5Dclose(dset_id);
-  status = H5Tclose(dtype_id);
-  status = H5Sclose(dspace_id);
-  status = H5Pclose(plist_id);
-
-  dim[0] = nx;
-  dim[1] = nz;
-  count[0] = local_nx;
-  count[1] = dim[1];
-  offset[0] = local_x_start;
-  offset[1] = 0;
-
-  // u
-  plist_id = H5Pcreate(H5P_DATASET_XFER);
-  H5Pset_dxpl_mpio(plist_id, H5FD_MPIO_COLLECTIVE);
-  fspace_id = H5Screate_simple(2, dim, NULL);
-  dset_id = H5Dcreate2(file_id, "/u", H5T_NATIVE_DOUBLE, fspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-  status = H5Sclose(fspace_id);
-  dspace_id = H5Screate_simple(2, count, NULL);
-  hio_fcopy2D(fx, dset, local_nx, nz);
-  fspace_id = H5Dget_space(dset_id);
-  H5Sselect_hyperslab(fspace_id, H5S_SELECT_SET, offset, NULL, count, NULL);
-  status = H5Dwrite(dset_id, H5T_NATIVE_DOUBLE, dspace_id, fspace_id, plist_id, dset);
-  status = H5Sclose(fspace_id);
-  status = H5Sclose(dspace_id);
-  status = H5Dclose(dset_id);
-
-  // w
-  fspace_id = H5Screate_simple(2, dim, NULL);
-  dset_id = H5Dcreate2(file_id, "/w", H5T_NATIVE_DOUBLE, fspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-  status = H5Sclose(fspace_id);
-  dspace_id = H5Screate_simple(2, count, NULL);
-  hio_fcopy2D(fz, dset, local_nx, nz);
-  fspace_id = H5Dget_space(dset_id);
-  H5Sselect_hyperslab(fspace_id, H5S_SELECT_SET, offset, NULL, count, NULL);
-  status = H5Dwrite(dset_id, H5T_NATIVE_DOUBLE, dspace_id, fspace_id, plist_id, dset);
-  status = H5Sclose(fspace_id);
-  status = H5Sclose(dspace_id);
-  status = H5Dclose(dset_id);
-  status = H5Pclose(plist_id);
-  status = H5Fclose(file_id);
-  free(dset);
-
-#else /* DON'T HAVE_MPI */
-
-  dset = (double *) malloc( sizeof(double) * local_nx * nz );
-
-  file_id = H5Fcreate(file, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
-
-  // lx
-  dim[0] = 1;
-  dspace_id = H5Screate_simple(1, dim, NULL);
-  dset_id = H5Dcreate2(file_id, "/lx", H5T_NATIVE_DOUBLE, dspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-  dset[0] = sim->box->lx;
-  status = H5Dwrite(dset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, dset);
-  status = H5Dclose(dset_id);
-
-  // lz
-  dset_id = H5Dcreate2(file_id, "/lz", H5T_NATIVE_DOUBLE, dspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-  dset[0] = sim->box->lz;
-  status = H5Dwrite(dset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, dset);
-  status = H5Dclose(dset_id);
-
-  // z
-  dset_id = H5Dcreate2(file_id, "/z", H5T_NATIVE_DOUBLE, dspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-  dset[0] = sim->height;
-  status = H5Dwrite(dset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, dset);
-  status = H5Dclose(dset_id);
-
-  // umean
-  dset_id = H5Dcreate2(file_id, "/umean", H5T_NATIVE_DOUBLE, dspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-  dset[0] = sim->umean;
-  status = H5Dwrite(dset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, dset);
-  status = H5Dclose(dset_id);
-
-  // z0
-  dset_id = H5Dcreate2(file_id, "/z0", H5T_NATIVE_DOUBLE, dspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-  dset[0] = sim->roughness;
-  status = H5Dwrite(dset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, dset);
-  status = H5Dclose(dset_id);
-
-  // log_z0
-  dset_id = H5Dcreate2(file_id, "/log_z0", H5T_NATIVE_DOUBLE, dspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-  dset[0] = sim->log_roughness;
-  status = H5Dwrite(dset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, dset);
-  status = H5Dclose(dset_id);
-
-  // spectra
-  dtype_id = H5Tcopy(H5T_C_S1);
-  status = H5Tset_size(dtype_id, strlen(sim->spectra) + 1);
-  dset_id = H5Dcreate2(file_id, "/spectra", dtype_id, dspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-  status = H5Dwrite(dset_id, dtype_id, H5S_ALL, H5S_ALL, H5P_DEFAULT, sim->spectra);
-  status = H5Dclose(dset_id);
-  status = H5Tclose(dtype_id);
-  status = H5Sclose(dspace_id);
-
-  dim[0] = nx;
-  dim[1] = nz;
-  dspace_id = H5Screate_simple(2, dim, NULL);
-
-  // u
-  dset_id = H5Dcreate2(file_id, "/u", H5T_NATIVE_DOUBLE, dspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-  hio_fcopy2D(fx, dset, nx, nz);
-  status = H5Dwrite(dset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, dset);
-  status = H5Dclose(dset_id);
-
-  // w
-  dset_id = H5Dcreate2(file_id, "/w", H5T_NATIVE_DOUBLE, dspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-  hio_fcopy2D(fz, dset, nx, nz);
   status = H5Dwrite(dset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, dset);
   status = H5Dclose(dset_id);
   status = H5Sclose(dspace_id);
@@ -1478,24 +1149,6 @@ void hio_fcopy(double * in, double * out, dft_ptr_t local_nx, dft_ptr_t ny, dft_
       for (k=0; k < nz; k++)
 	out[iptr1 + jptr1 + k] = in[iptr2 + jptr2 + k];
     }
-  }
-#endif /* HAVE_HDF5 */
-}
-
-/**
- * hio_fcopy:
- * Copy padded DFT field to non-padded field.
- */
-void hio_fcopy2D(double * in, double * out, dft_ptr_t local_nx, dft_ptr_t nz)
-{
-#ifdef HAVE_HDF5
-  dft_ptr_t i, j, k, iptr1, iptr2, jptr1, jptr2;
-
-  for (i=0; i < local_nx; i++) {
-    iptr1 = i * nz;
-    iptr2 = i * (nz + 2);
-    for (k=0; k < nz; k++)
-      out[iptr1 + k] = in[iptr2 + k];
   }
 #endif /* HAVE_HDF5 */
 }

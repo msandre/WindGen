@@ -54,7 +54,7 @@ extern "C" {
   void    dft_finalize_mpi     (void);
 
 
-  dft_t * dft_init             (dft_ptr_t nx, dft_ptr_t ny, dft_ptr_t nz);
+  dft_t * dft_init3D           (dft_ptr_t nx, dft_ptr_t ny, dft_ptr_t nz);
   
   dft_t * dft_init2D           (dft_ptr_t nx, dft_ptr_t nz);
 

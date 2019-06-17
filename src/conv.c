@@ -26,10 +26,10 @@ static double sinc2y[CONV_SIZE];
 static double sinc2z[CONV_SIZE];
 
 /**
- * conv_init:
+ * conv_init3D:
  * Initialize the convolution arrays.
  */
-void conv_init(wfs_t * sim)
+void conv_init3D(wfs_t * sim)
 {
   double   lx    = sim->box->lx;
   double   ly    = sim->box->ly;
@@ -95,25 +95,25 @@ void conv_init2D(wfs_t * sim)
 }
 
 /**
- * conv_execute:
+ * conv_execute3D:
  * Substitute the dirac approximation with the more accurate convolution decomposition.
  */
-void conv_execute(wfs_t * sim, double kx, double ky, double kz, double * pfx, double * pfy, double * pfz)
+void conv_execute3D(wfs_t * sim, double kx, double ky, double kz, double * pfx, double * pfy, double * pfz)
 {
   double a[3][3];
   double cx, cy, cz;
 
-  a[0][0] = conv_integrate(sim, &phi11, kx, ky, kz);
-  a[1][0] = conv_integrate(sim, &phi21, kx, ky, kz);
-  a[2][0] = conv_integrate(sim, &phi31, kx, ky, kz);
+  a[0][0] = conv_integrate3D(sim, &phi11, kx, ky, kz);
+  a[1][0] = conv_integrate3D(sim, &phi21, kx, ky, kz);
+  a[2][0] = conv_integrate3D(sim, &phi31, kx, ky, kz);
   a[0][1] = a[1][0];
-  a[1][1] = conv_integrate(sim, &phi22, kx, ky, kz);
-  a[2][1] = conv_integrate(sim, &phi32, kx, ky, kz);
+  a[1][1] = conv_integrate3D(sim, &phi22, kx, ky, kz);
+  a[2][1] = conv_integrate3D(sim, &phi32, kx, ky, kz);
   a[0][2] = a[2][0];
   a[1][2] = a[2][1];
-  a[2][2] = conv_integrate(sim, &phi33, kx, ky, kz);
+  a[2][2] = conv_integrate3D(sim, &phi33, kx, ky, kz);
     
-  conv_decompose(a);
+  conv_decompose3D(a);
   
   // real
   cx = pfx[0];
@@ -162,10 +162,10 @@ void conv_execute2D(wfs_t * sim, double kx, double kz, double * pfx, double * pf
 }
 
 /**
- * conv_integrate:
+ * conv_integrate3D:
  * Compute approximate convolution of spectral tensor component.
  */
-double conv_integrate(wfs_t * sim, conv_func_ptr_t fptr, double kx, double ky, double kz)
+double conv_integrate3D(wfs_t * sim, conv_func_ptr_t fptr, double kx, double ky, double kz)
 {
   int n = CONV_SIZE;
   int iy, iz;
@@ -212,10 +212,10 @@ double conv_integrate2D(wfs_t * sim, conv_func_ptr_t fptr, double kx, double kz)
 }
 
 /**
- * conv_decompose:
+ * conv_decompose3D:
  * Decompose a symmetric 3x3 matrix neglecting negative eigenvalues.
  */
-void conv_decompose(double a[][3])
+void conv_decompose3D(double a[][3])
 {
   double d[3];
   double v[3][3];

@@ -35,19 +35,19 @@ extern "C" {
 
   typedef double (* conv_func_ptr_t) (wfs_t *, double, double, double);
 
-  void   conv_init            (wfs_t * sim);
+  void   conv_init3D          (wfs_t * sim);
 
   void   conv_init2D          (wfs_t * sim);
 
-  void   conv_execute         (wfs_t * sim, double kx, double ky, double kz, double * pfx, double * pfy, double * pfz);
+  void   conv_execute3D       (wfs_t * sim, double kx, double ky, double kz, double * pfx, double * pfy, double * pfz);
 
   void   conv_execute2D       (wfs_t * sim, double kx, double kz, double * pfx, double * pfz);
 
-  double conv_integrate       (wfs_t * sim, conv_func_ptr_t fptr, double kx, double ky, double kz);
+  double conv_integrate3D     (wfs_t * sim, conv_func_ptr_t fptr, double kx, double ky, double kz);
 
   double conv_integrate2D     (wfs_t * sim, conv_func_ptr_t fptr, double kx, double kz);
 
-  void   conv_decompose       (double a[][3]);
+  void   conv_decompose3D     (double a[][3]);
   
   void   conv_decompose2D     (double a[][2]);
   

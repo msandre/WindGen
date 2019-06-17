@@ -50,8 +50,8 @@ int main(int argc, char *argv[])
 
   /* write data to HDF5 file
    *
-   * This file can be viewed in ParaView if the built-in "reader" VisItPFLOTRANReader
-   * is selected. This is useful for visualization of the velocity fluctuations.
+   * This file can be viewed in ParaView if the built-in "reader"
+   * VisItPFLOTRANReader or VisItPixieReader is selected.
    */
   hio_write("windgen.h5", sim);
 
