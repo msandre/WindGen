@@ -1,0 +1,11 @@
+WindFieldSimulation  
+{
+  # Just some arbitrary parameters.
+  Box { lx = 1280.0    ly = 10.0    lz = 10.0    rx = 12    ry = 0    rz = 5 }
+
+  umean = 14.677  height = 25.0  roughness = 0.03  conv = 1
+
+  log roughness = 0.01
+
+  spectra = kaimal
+}

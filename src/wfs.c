@@ -42,6 +42,10 @@ void wfs_finalize_mpi(void)
 /**
  * wfs_init:
  * Initialize a wind field simulation from an input file.
+ * 
+ * 2D wind fields are generated for the input parameter ry=0. In that case ly
+ * determines the interval for integrating out the y-component of the spectral
+ * tensor.
  */
 wfs_t * wfs_init(const char * file, char * err)
 {
@@ -67,7 +71,7 @@ wfs_t * wfs_init(const char * file, char * err)
   char * rx_buf = reg_match(box_buf, "(\\{|\\s)rx\\s*=\\s*[1-9]+[0-9]*(\\}|\\s)");
   if (rx_buf == NULL) WFS_ERROR(err, "Input Error: Cannot find valid rx");
 
-  char * ry_buf = reg_match(box_buf, "(\\{|\\s)ry\\s*=\\s*[1-9]+[0-9]*(\\}|\\s)");
+  char * ry_buf = reg_match(box_buf, "(\\{|\\s)ry\\s*=\\s*[0-9]+(\\}|\\s)");
   if (ry_buf == NULL) WFS_ERROR(err, "Input Error: Cannot find valid ry");
 
   char * lz_buf = reg_match(box_buf, "(\\{|\\s)lz\\s*=\\s*\\+?[0-9]+(\\.[0-9]*)?(\\}|\\s)");
@@ -109,9 +113,19 @@ wfs_t * wfs_init(const char * file, char * err)
   sim->box->nz = 1;
   for (i=0; i<r; i++) sim->box->nz = 2 * sim->box->nz;
   N = sim->box->nx * sim->box->ny * sim->box->nz;
-  sim->dft_x = dft_init(sim->box->nx, sim->box->ny, sim->box->nz);
-  sim->dft_y = dft_init(sim->box->nx, sim->box->ny, sim->box->nz);
-  sim->dft_z = dft_init(sim->box->nx, sim->box->ny, sim->box->nz);
+  if (is_2d(sim))
+  {
+    sim->dft_x = dft_init2D(sim->box->nx, sim->box->nz);
+    sim->dft_y = dft_init2D(sim->box->nx, sim->box->nz);
+    sim->dft_z = dft_init2D(sim->box->nx, sim->box->nz);
+  }
+  else
+  {
+    sim->dft_x = dft_init3D(sim->box->nx, sim->box->ny, sim->box->nz);
+    sim->dft_y = dft_init3D(sim->box->nx, sim->box->ny, sim->box->nz);
+    sim->dft_z = dft_init3D(sim->box->nx, sim->box->ny, sim->box->nz);
+  }
+  
   sim->umean = atof(strchr(umean_buf,'=') + 1);
   sim->height = atof(strchr(height_buf,'=') + 1);
   sim->roughness = atof(strchr(roughness_buf,'=') + 1);
@@ -160,7 +174,15 @@ wfs_t * wfs_init(const char * file, char * err)
 #endif /* HAVE_MPI */
 
   rv_init(rank);
-  conv_init(sim);
+  if (is_2d(sim))
+  {
+    conv_init2D(sim);
+  }
+  else
+  {
+    conv_init3D(sim);
+  }
+  
 
   free(fbuf);
   free(wfs_buf);
@@ -181,6 +203,10 @@ wfs_t * wfs_init(const char * file, char * err)
   return sim;
 }
 
+int is_2d(const wfs_t * sim)
+{
+  return sim->box->ny == 1;
+}
 
 /**
  * wfs_generate_wind:
@@ -201,21 +227,29 @@ void wfs_generate_wind(wfs_t * sim)
   // fill arrays with random complex numbers such that E[ZZ*] = 1
   size = 2 * local_nx * ny * (nz/2 + 1);
   rv_normal(fx, size);
-  rv_normal(fy, size);
+  if (!is_2d(sim))
+  {
+    rv_normal(fy, size);
+  }
   rv_normal(fz, size);
 
   // apply spectral tensor matrices
   wfs_apply_spectrum(sim);
 
   // apply Hermitian symmetry
-  wfs_apply_symmetry(sim);
+  wfs_apply_symmetry(sim, sim->dft_x);
+  wfs_apply_symmetry(sim, sim->dft_z);
 
   // inverse dft
   dft_execute(sim->dft_x);
-  dft_execute(sim->dft_y);
   dft_execute(sim->dft_z);
-}
 
+  if (!is_2d(sim))
+  {
+    wfs_apply_symmetry(sim, sim->dft_y);
+    dft_execute(sim->dft_y);
+  }
+}
 
 void wfs_destroy(wfs_t * sim)
 {
@@ -231,6 +265,19 @@ void wfs_destroy(wfs_t * sim)
  * Apply the isotropic/anisotropic transformation matrix.
  */
 void wfs_apply_spectrum(wfs_t * sim)
+{
+  if (is_2d(sim))
+  {
+    wfs_apply_spectrum2D(sim);
+  }
+  else
+  {
+    wfs_apply_spectrum3D(sim);
+  }
+  
+}
+
+void wfs_apply_spectrum3D(wfs_t * sim)
 {
   double       twopi         = 6.283185307179586;
   dft_ptr_t    nx            = sim->box->nx;
@@ -323,7 +370,7 @@ void wfs_apply_spectrum(wfs_t * sim)
 	ptr = iptr + jptr + k;
 	kk = kkx + kky + kz * kz;
 	if (conv == 1 && kk < 9.0 / sim->LL) {
-	  conv_execute(sim, kx, ky, kz, &fcx[ptr][0], &fcy[ptr][0], &fcz[ptr][0]);
+	  conv_execute3D(sim, kx, ky, kz, &fcx[ptr][0], &fcy[ptr][0], &fcz[ptr][0]);
 	}
 	else {
 	  wfs_sheared_spectrum(sim, kx, ky, kz, &kz0, &kk0, &axz, &ayz, &azz);
@@ -364,7 +411,7 @@ void wfs_apply_spectrum(wfs_t * sim)
 	ptr = iptr + jptr + k;
 	kk = kkx + kky + kz * kz;
 	if (conv == 1 && kk < 9.0 / sim->LL) {
-	  conv_execute(sim, kx, ky, kz, &fcx[ptr][0], &fcy[ptr][0], &fcz[ptr][0]);
+	  conv_execute3D(sim, kx, ky, kz, &fcx[ptr][0], &fcy[ptr][0], &fcz[ptr][0]);
 	}
 	else {
 	  wfs_sheared_spectrum(sim, kx, ky, kz, &kz0, &kk0, &axz, &ayz, &azz);
@@ -412,7 +459,7 @@ void wfs_apply_spectrum(wfs_t * sim)
 	ptr = iptr + jptr + k;
 	kk = kkx + kky + kz * kz;
 	if (conv == 1 && kk < 9.0 / sim->LL) {
-	  conv_execute(sim, kx, ky, kz, &fcx[ptr][0], &fcy[ptr][0], &fcz[ptr][0]);
+	  conv_execute3D(sim, kx, ky, kz, &fcx[ptr][0], &fcy[ptr][0], &fcz[ptr][0]);
 	}
 	else {
 	  wfs_sheared_spectrum(sim, kx, ky, kz, &kz0, &kk0, &axz, &ayz, &azz);
@@ -453,7 +500,7 @@ void wfs_apply_spectrum(wfs_t * sim)
 	ptr = iptr + jptr + k;
 	kk = kkx + kky + kz * kz;
 	if (conv == 1 && kk < 9.0 / sim->LL) {
-	  conv_execute(sim, kx, ky, kz, &fcx[ptr][0], &fcy[ptr][0], &fcz[ptr][0]);
+	  conv_execute3D(sim, kx, ky, kz, &fcx[ptr][0], &fcy[ptr][0], &fcz[ptr][0]);
 	}
 	else {
 	  wfs_sheared_spectrum(sim, kx, ky, kz, &kz0, &kk0, &axz, &ayz, &azz);
@@ -485,6 +532,83 @@ void wfs_apply_spectrum(wfs_t * sim)
     }
     kx = kx + dkx;
   }  
+}
+
+void wfs_apply_spectrum2D(wfs_t * sim)
+{
+  double       twopi         = 6.283185307179586;
+  dft_ptr_t    nx            = sim->box->nx;
+  dft_ptr_t    nz            = sim->box->nz;
+  dft_ptr_t    local_x_start = sim->dft_x->local_x_start;
+  dft_ptr_t    local_nx      = sim->dft_x->local_nx;
+  double       lx            = sim->box->lx + sim->box->lx / (double) (nx - 1);
+  double       lz            = sim->box->lz + sim->box->lz / (double) (nz - 1);
+  double       dkx           = twopi / lx;
+  double       dkz           = twopi / lz;
+  double       dkk           = dkx * dkz;
+  complex_t *  fcx           = sim->dft_x->field;
+  complex_t *  fcz           = sim->dft_z->field;
+  int          conv          = sim->conv;
+  double cx, cy, cz;
+  double axz, ayz, azz;
+  double kx, ky, kz, kz0, kkx, kky, kk, kk0, tmp;
+  dft_ptr_t i, j, k, l, iptr, jptr, ptr;
+  dft_ptr_t i_pos_start, i_neg_start, i_pos_end, i_neg_end;
+
+  // kx = 0
+  if (local_x_start == 0) {
+    i_pos_start = 1;
+    i = 0;
+    kx = 0;
+    kz = 0;
+    iptr = i * (nz/2 + 1);
+    for (k=0; k < nz/2 + 1; k++) {
+      ptr = iptr + k;
+      for (l=0; l < 2; l++) {
+        // zero streamwise mean values
+        fcx[ptr][l] = 0.0;
+        fcz[ptr][l] = 0.0;
+      }
+      kz = kz + dkz;
+    }
+  }
+  else {
+    i_pos_start = 0;
+  }
+
+  i_pos_end   = min(local_nx, nx/2 + 1 - local_x_start);
+  i_neg_start = max(nx/2 + 1 - local_x_start, 0);
+  i_neg_end   = local_nx;
+
+  // positive x-frequencies
+  kx = dkx * (double) (local_x_start + i_pos_start);
+  for (i=i_pos_start; i < i_pos_end; i++) {
+    kkx = kx * kx;
+    iptr = i * (nz/2 + 1);
+    kz = 0;
+    for (k=0; k < nz/2 + 1; k++) {
+      ptr = iptr + k;
+      kk = kkx + kz * kz;
+      conv_execute2D(sim, kx, kz, &fcx[ptr][0], &fcz[ptr][0]);
+      kz = kz + dkz;
+    }
+    kx = kx + dkx;
+  }
+
+  // negative x-frequencies
+  kx = -dkx * (double) ( nx - (local_x_start + i_neg_start) );
+  for (i=i_neg_start; i < i_neg_end; i++) {
+    kkx = kx * kx;
+    iptr = i * (nz/2 + 1);
+    kz = 0;
+    for (k=0; k < nz/2 + 1; k++) {
+      ptr = iptr + k;
+      kk = kkx + kz * kz;
+      conv_execute2D(sim, kx, kz, &fcx[ptr][0], &fcz[ptr][0]);
+      kz = kz + dkz;
+    }
+    kx = kx + dkx;
+  }
 }
 
 /**
@@ -522,27 +646,21 @@ void wfs_sheared_spectrum(wfs_t * sim, double kx, double ky, double kz, double *
  * wfs_apply_symmetry:
  * Make the complex fields have Hermitian symmetry.
  */
-void wfs_apply_symmetry(wfs_t * sim)
+void wfs_apply_symmetry(wfs_t * sim, dft_t * dft)
 {
   dft_ptr_t    nx            = sim->box->nx;
   dft_ptr_t    ny            = sim->box->ny;
   dft_ptr_t    nz            = sim->box->nz;
   dft_ptr_t    local_x_start = sim->dft_x->local_x_start;
   dft_ptr_t    local_nx      = sim->dft_x->local_nx;  
-  complex_t *  fcx           = sim->dft_x->field;
-  complex_t *  fcy           = sim->dft_y->field;
-  complex_t *  fcz           = sim->dft_z->field;
+  complex_t *  fc            = dft->field;
   dft_ptr_t i, j, k, l, iptr, jptr, ptr;
-  complex_t * slicex, * slicey, * slicez;
-  herm_t * hermx, * hermy, * hermz;
+  complex_t * slice;
+  herm_t * herm;
 
-  hermx = herm_init(nx, ny, local_x_start, local_nx);
-  hermy = herm_init(nx, ny, local_x_start, local_nx);
-  hermz = herm_init(nx, ny, local_x_start, local_nx);
+  herm = herm_init(nx, ny, local_x_start, local_nx);
 
-  slicex = hermx->slice;
-  slicey = hermy->slice;
-  slicez = hermz->slice;
+  slice = herm->slice;
 
   // set Hermitian planes k = 0
   k = 0;
@@ -553,17 +671,13 @@ void wfs_apply_symmetry(wfs_t * sim)
       ptr = iptr + jptr + k;
 
       for (l=0; l < 2; l++) {
-	slicex[i*ny + j][l] = fcx[ptr][l];
-	slicey[i*ny + j][l] = fcy[ptr][l];
-	slicez[i*ny + j][l] = fcz[ptr][l];
+        slice[i*ny + j][l] = fc[ptr][l];
       }
     }
   }
 
   // apply Hermitian symmetry k = 0
-  herm_execute(hermx);
-  herm_execute(hermy);
-  herm_execute(hermz);
+  herm_execute(herm);
 
   // copy Hermitian planes k = 0
   for (i=0; i < local_nx; i++) {
@@ -573,9 +687,7 @@ void wfs_apply_symmetry(wfs_t * sim)
       ptr = iptr + jptr + k;
 
       for (l=0; l < 2; l++) {
-	fcx[ptr][l] = slicex[i*ny + j][l];
-	fcy[ptr][l] = slicey[i*ny + j][l];
-	fcz[ptr][l] = slicez[i*ny + j][l];
+        fc[ptr][l] = slice[i*ny + j][l];
       }
     }
   }
@@ -589,17 +701,13 @@ void wfs_apply_symmetry(wfs_t * sim)
       ptr = iptr + jptr + k;
 
       for (l=0; l < 2; l++) {
-	slicex[i*ny + j][l] = fcx[ptr][l];
-	slicey[i*ny + j][l] = fcy[ptr][l];
-	slicez[i*ny + j][l] = fcz[ptr][l];
+        slice[i*ny + j][l] = fc[ptr][l];
       }
     }
   }
 
   // apply Hermitian symmetry k = nz/2
-  herm_execute(hermx);
-  herm_execute(hermy);
-  herm_execute(hermz);
+  herm_execute(herm);
 
   // copy Hermitian planes k = nz/2
   for (i=0; i < local_nx; i++) {
@@ -609,15 +717,84 @@ void wfs_apply_symmetry(wfs_t * sim)
       ptr = iptr + jptr + k;
 
       for (l=0; l < 2; l++) {
-	fcx[ptr][l] = slicex[i*ny + j][l];
-	fcy[ptr][l] = slicey[i*ny + j][l];
-	fcz[ptr][l] = slicez[i*ny + j][l];
+        fc[ptr][l] = slice[i*ny + j][l];
       }
     }
   }
 
+  herm_destroy(herm);
+}
+
+/**
+ * wfs_apply_symmetry2D:
+ * Make the complex fields have Hermitian symmetry.
+ */
+void wfs_apply_symmetry2D(wfs_t * sim)
+{
+  dft_ptr_t    nx            = sim->box->nx;
+  dft_ptr_t    ny            = sim->box->ny;
+  dft_ptr_t    nz            = sim->box->nz;
+  dft_ptr_t    local_x_start = sim->dft_x->local_x_start;
+  dft_ptr_t    local_nx      = sim->dft_x->local_nx;  
+  complex_t *  fcx           = sim->dft_x->field;
+  complex_t *  fcz           = sim->dft_z->field;
+  dft_ptr_t i, j, k, l, iptr, jptr, ptr;
+  complex_t * slicex, * slicey, * slicez;
+  herm_t * hermx, * hermy, * hermz;
+
+  hermx = herm_init(nx, ny, local_x_start, local_nx);
+  hermz = herm_init(nx, ny, local_x_start, local_nx);
+
+  slicex = hermx->slice;
+  slicez = hermz->slice;
+
+  // set Hermitian planes k = 0
+  k = 0;
+  for (i=0; i < local_nx; i++) {
+    ptr = i * (nz/2 + 1) + k;
+    for (l=0; l < 2; l++) {
+      slicex[i][l] = fcx[ptr][l];
+      slicez[i][l] = fcz[ptr][l];
+    }
+  }
+
+  // apply Hermitian symmetry k = 0
+  herm_execute(hermx);
+  herm_execute(hermz);
+
+  // copy Hermitian planes k = 0
+  for (i=0; i < local_nx; i++) {
+    iptr = i * (nz/2 + 1) + k;
+    for (l=0; l < 2; l++) {
+      fcx[ptr][l] = slicex[i][l];
+      fcz[ptr][l] = slicez[i][l];
+    }
+  }
+
+  // set Hermitian planes k = nz/2
+  k = nz/2;
+  for (i=0; i < local_nx; i++) {
+    iptr = i * (nz/2 + 1) + k;
+    for (l=0; l < 2; l++) {
+      slicex[i][l] = fcx[ptr][l];
+      slicez[i][l] = fcz[ptr][l];
+    }
+  }
+
+  // apply Hermitian symmetry k = nz/2
+  herm_execute(hermx);
+  herm_execute(hermz);
+
+  // copy Hermitian planes k = nz/2
+  for (i=0; i < local_nx; i++) {
+    iptr = i * (nz/2 + 1) + k;
+    for (l=0; l < 2; l++) {
+      fcx[ptr][l] = slicex[i][l];
+      fcz[ptr][l] = slicez[i][l];
+    }
+  }
+
   herm_destroy(hermx);
-  herm_destroy(hermy);
   herm_destroy(hermz);
 }
 
@@ -704,8 +881,11 @@ void hio_write(const char * file, wfs_t * sim)
   dft_ptr_t    nz              = sim->box->nz;
   hid_t file_id, dset_id, dspace_id, dtype_id;
   hsize_t dim[3];
+  int ndim;
   herr_t status;
   double * dset;
+
+  ndim = (is_2d(sim)) ? 2 : 3;
 
 #ifdef HAVE_MPI
   hsize_t count[3];
@@ -789,8 +969,16 @@ void hio_write(const char * file, wfs_t * sim)
   status = H5Pclose(plist_id);
 
   dim[0] = nx;
-  dim[1] = ny;
-  dim[2] = nz;
+  if (is_2d(sim))
+  {
+    dim[1] = nz;
+  }
+  else
+  {
+    dim[1] = ny;
+    dim[2] = nz;
+  }
+  
   count[0] = local_nx;
   count[1] = dim[1];
   count[2] = dim[2];
@@ -801,10 +989,10 @@ void hio_write(const char * file, wfs_t * sim)
   // u
   plist_id = H5Pcreate(H5P_DATASET_XFER);
   H5Pset_dxpl_mpio(plist_id, H5FD_MPIO_COLLECTIVE);
-  fspace_id = H5Screate_simple(3, dim, NULL);
+  fspace_id = H5Screate_simple(ndim, dim, NULL);
   dset_id = H5Dcreate2(file_id, "/u", H5T_NATIVE_DOUBLE, fspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
   status = H5Sclose(fspace_id);
-  dspace_id = H5Screate_simple(3, count, NULL);
+  dspace_id = H5Screate_simple(ndim, count, NULL);
   hio_fcopy(fx, dset, local_nx, ny, nz);
   fspace_id = H5Dget_space(dset_id);
   H5Sselect_hyperslab(fspace_id, H5S_SELECT_SET, offset, NULL, count, NULL);
@@ -814,23 +1002,26 @@ void hio_write(const char * file, wfs_t * sim)
   status = H5Dclose(dset_id);
 
   // v
-  fspace_id = H5Screate_simple(3, dim, NULL);
-  dset_id = H5Dcreate2(file_id, "/v", H5T_NATIVE_DOUBLE, fspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-  status = H5Sclose(fspace_id);
-  dspace_id = H5Screate_simple(3, count, NULL);
-  hio_fcopy(fy, dset, local_nx, ny, nz);
-  fspace_id = H5Dget_space(dset_id);
-  H5Sselect_hyperslab(fspace_id, H5S_SELECT_SET, offset, NULL, count, NULL);
-  status = H5Dwrite(dset_id, H5T_NATIVE_DOUBLE, dspace_id, fspace_id, plist_id, dset);
-  status = H5Sclose(fspace_id);
-  status = H5Sclose(dspace_id);
-  status = H5Dclose(dset_id);
+  if (!is_2d(sim))
+  {
+    fspace_id = H5Screate_simple(ndim, dim, NULL);
+    dset_id = H5Dcreate2(file_id, "/v", H5T_NATIVE_DOUBLE, fspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+    status = H5Sclose(fspace_id);
+    dspace_id = H5Screate_simple(ndim, count, NULL);
+    hio_fcopy(fy, dset, local_nx, ny, nz);
+    fspace_id = H5Dget_space(dset_id);
+    H5Sselect_hyperslab(fspace_id, H5S_SELECT_SET, offset, NULL, count, NULL);
+    status = H5Dwrite(dset_id, H5T_NATIVE_DOUBLE, dspace_id, fspace_id, plist_id, dset);
+    status = H5Sclose(fspace_id);
+    status = H5Sclose(dspace_id);
+    status = H5Dclose(dset_id);
+  }
 
   // w
-  fspace_id = H5Screate_simple(3, dim, NULL);
+  fspace_id = H5Screate_simple(ndim, dim, NULL);
   dset_id = H5Dcreate2(file_id, "/w", H5T_NATIVE_DOUBLE, fspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
   status = H5Sclose(fspace_id);
-  dspace_id = H5Screate_simple(3, count, NULL);
+  dspace_id = H5Screate_simple(ndim, count, NULL);
   hio_fcopy(fz, dset, local_nx, ny, nz);
   fspace_id = H5Dget_space(dset_id);
   H5Sselect_hyperslab(fspace_id, H5S_SELECT_SET, offset, NULL, count, NULL);
@@ -902,9 +1093,16 @@ void hio_write(const char * file, wfs_t * sim)
   status = H5Sclose(dspace_id);
 
   dim[0] = nx;
-  dim[1] = ny;
-  dim[2] = nz;
-  dspace_id = H5Screate_simple(3, dim, NULL);
+  if (is_2d(sim))
+  {
+    dim[1] = nz;
+  }
+  else
+  {
+    dim[1] = ny;
+    dim[2] = nz;
+  }
+  dspace_id = H5Screate_simple(ndim, dim, NULL);
 
   // u
   dset_id = H5Dcreate2(file_id, "/u", H5T_NATIVE_DOUBLE, dspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
@@ -913,10 +1111,13 @@ void hio_write(const char * file, wfs_t * sim)
   status = H5Dclose(dset_id);
 
   // v
-  dset_id = H5Dcreate2(file_id, "/v", H5T_NATIVE_DOUBLE, dspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-  hio_fcopy(fy, dset, nx, ny, nz);
-  status = H5Dwrite(dset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, dset);
-  status = H5Dclose(dset_id);
+  if (!is_2d(sim))
+  {
+    dset_id = H5Dcreate2(file_id, "/v", H5T_NATIVE_DOUBLE, dspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+    hio_fcopy(fy, dset, nx, ny, nz);
+    status = H5Dwrite(dset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, dset);
+    status = H5Dclose(dset_id);
+  }
 
   // w
   dset_id = H5Dcreate2(file_id, "/w", H5T_NATIVE_DOUBLE, dspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
@@ -929,7 +1130,6 @@ void hio_write(const char * file, wfs_t * sim)
 #endif /* HAVE_MPI */
 #endif /* HAVE_HDF5 */
 }
-
 
 /**
  * hio_fcopy:

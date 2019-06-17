@@ -3,11 +3,13 @@ include ../config.mk
 CDEPS = wfs.c input.c dft.c rv.c herm.c conv.c
 OBJS = $(CDEPS:.c=.o)
 
-all: libwfs.a
+default: libwfs.a
 
-libwfs.a: $(OBJS)
+libwfs.a: $(OBJS) ../config.mk
 	rm -f libwfs.a
 	ar rcs libwfs.a $(OBJS)
 
 clean:
-	rm -f *.o *.a *~
+	@rm -f *.o *.a *~ 2>/dev/null || true
+
+.PHONY: default clean

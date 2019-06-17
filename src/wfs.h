@@ -67,15 +67,21 @@ extern "C" {
 
   wfs_t * wfs_init                     (const char * file, char * err);
 
+  int     is_2d                        (const wfs_t * sim);
+
   void    wfs_generate_wind            (wfs_t * sim);
 
   void    wfs_destroy                  (wfs_t * sim);
 
   void    wfs_apply_spectrum           (wfs_t * sim);
 
+  void    wfs_apply_spectrum3D         (wfs_t * sim);
+
+  void    wfs_apply_spectrum2D         (wfs_t * sim);
+
   void    wfs_sheared_spectrum         (wfs_t * sim, double kx, double ky, double kz, double * pkz0, double * pkk0, double * paxz, double * payz, double * pazz);
 
-  void    wfs_apply_symmetry           (wfs_t * sim);
+  void    wfs_apply_symmetry           (wfs_t * sim, dft_t * dft);
 
   double  hyp2f1_series                (double a, double b, double c, double z);
   

@@ -101,6 +101,34 @@ herm_t * herm_init(dft_ptr_t nx, dft_ptr_t ny, dft_ptr_t local_x_start, dft_ptr_
 /**
  * herm_execute:
  * Apply Hermitian symmetry.
+ * 
+ * The conditions for Hermitian symmetry which we impose are:
+ * 
+ * f[i, j, k] = complex_conjugate(f[nx-i, ny-j, nz-k])
+ * f[0, j, k] = f[nx, j, k] // x-periodicity
+ * f[i, 0, k] = f[i, ny, k] // y-periodicity
+ * f[i, j, 0] = f[i, j, nz] // z-periodicity
+ * 
+ * These conditions imply
+ * 
+ * f[0, 0, 0] = complex_conjugate(f[nx, ny, 0]) => imag(f[0, 0, 0]) = 0
+ * f[0, ny/2, 0] = complex_conjugate(f[nx, ny/2, 0]) => imag(f[0, ny/2, 0]) = 0
+ * f[nx/2, 0, 0] = complex_conjugate(f[nx/2, ny, 0]) => imag(f[nx/2, 0, 0]) = 0
+ * f[nx/2, ny/2, 0] = complex_conjugate(f[nx/2, ny/2, 0]) => imag(f[nx/2, ny/2, 0]) = 0
+ * f[i, j, 0] = complex_conjugate(f[nx-i, ny-j, 0])
+ *
+ * and
+ * 
+ * f[0, 0, nz/2] = complex_conjugate(f[nx, ny, nz/2]) => imag(f[0, 0, nz/2]) = 0
+ * f[0, ny/2, nz/2] = complex_conjugate(f[nx, ny/2, nz/2]) => imag(f[0, ny/2, nz/2]) = 0
+ * f[nx/2, 0, nz/2] = complex_conjugate(f[nx/2, ny, nz/2]) => imag(f[nx/2, 0, nz/2]) = 0
+ * f[nx/2, ny/2, nz/2] = complex_conjugate(f[nx/2, ny/2, nz/2]) => imag(f[nx/2, ny/2, nz/2]) = 0
+ * f[i, j, nz/2] = complex_conjugate(f[nx-i, ny-j, nz/2])
+ * 
+ * These conditions are applied by copying the data f[i, j, 0] and f[i, j, nz/2]
+ * to the 2D slice in a herm_t structure and calling this function. Due to the
+ * way fftw only stores data between i=0 and i=nz/2, the remaining conditions
+ * are automatically satisfied.
  */
 void herm_execute(herm_t * herm)
 {
@@ -125,11 +153,12 @@ void herm_execute(herm_t * herm)
   if (herm->rank == 0) { // perodic-x and Hermitian symmetry
     for (j=1; j < ny/2; j++) {
       jptr = 2*j;
+      // f[0, ny-j] = complex_conjugate(f[0, j])
       slice[2*ny - jptr] = slice[jptr]; // symmetric real
       slice[2*ny - jptr + 1] = -slice[jptr + 1]; // symmetric imag
     }
-    slice[1] = 0.;
-    slice[ny + 1] = 0.;
+    slice[1] = 0.; // imag(f[0, 0]) = 0
+    if (ny > 1) slice[ny + 1] = 0.; // imag(f[0, ny/2]) = 0
   }
 
   // i = nx/2
@@ -137,11 +166,12 @@ void herm_execute(herm_t * herm)
     iptr = 2 * (nx/2 - local_x_start) * ny;
     for (j=1; j < ny/2; j++) {
       jptr = 2*j;
+      // f[nx/2, ny-j] = complex_conjugate(f[nx/2, j])
       slice[iptr + 2*ny - jptr] = slice[iptr + jptr]; 
       slice[iptr + 2*ny - jptr + 1] = -slice[iptr + jptr + 1]; 
     }
-    slice[iptr + 1] = 0.;
-    slice[iptr + ny + 1] = 0.;
+    slice[iptr + 1] = 0.; // imag(f[nx/2, 0]) = 0
+    if (ny > 1) slice[iptr + ny + 1] = 0.; // imag(f[nx/2, ny/2]) = 0
   }
 
   // fill slice_out
@@ -151,12 +181,13 @@ void herm_execute(herm_t * herm)
     slice_out[i] = slice[ptr1 + i];
   }
 
-  // apply local symmetry
+  // apply local symmetry to x-y plane
   tmp = (double *) malloc( sizeof(complex_t) * slice_out_nx * ny );
   ptr1 = 2 * ( (slice_out_nx-1) * ny + ny );
 
   for (i=0; i < slice_out_nx; i++) {
     iptr = 2 * i * ny;
+    // f[nx-i, ny-j] = complex_conjugate(f[i, j])
     tmp[ptr1 - 2*ny - iptr] = slice_out[iptr];
     tmp[ptr1 - 2*ny - iptr + 1] = -slice_out[iptr + 1];
     for (j=1; j < ny; j++) {

@@ -48,7 +48,11 @@ int main(int argc, char *argv[])
   // generate wind
   wfs_generate_wind(sim);
 
-  // write data to HDF5 file
+  /* write data to HDF5 file
+   *
+   * This file can be viewed in ParaView if the built-in "reader"
+   * VisItPFLOTRANReader or VisItPixieReader is selected.
+   */
   hio_write("windgen.h5", sim);
 
   // destroy simulation
