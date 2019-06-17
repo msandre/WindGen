@@ -25,7 +25,7 @@
 #define __CONV_H__
 
 // must be odd
-#define CONV_SIZE 81
+#define CONV_SIZE 21
 
 #include "wfs.h"
 
