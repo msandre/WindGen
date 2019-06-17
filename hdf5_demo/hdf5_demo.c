@@ -25,6 +25,7 @@ int main(int argc, char *argv[])
 {
   wfs_t * sim;
   char err[WFS_ERROR_SIZE];
+  int rank = 0;
 
   // input file name expected as argument
   if (argc != 2)
@@ -35,6 +36,7 @@ int main(int argc, char *argv[])
 
 #ifdef HAVE_MPI
   MPI_Init(&argc, &argv);
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   wfs_init_mpi();
 #endif /* HAVE_MPI */
 
@@ -63,7 +65,9 @@ int main(int argc, char *argv[])
   MPI_Finalize();
 #endif /* HAVE_MPI */
 
-  printf("Finished!\n");
+  if(rank == 0) {
+    printf("Finished!\n");
+  }
 
   return 0;
 }
