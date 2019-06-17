@@ -28,6 +28,7 @@
 #include <stdlib.h>
 #include "def.h"
 #include "dft.h"
+#include "range.h"
 
 #ifdef __cplusplus
 extern "C" {

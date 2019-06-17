@@ -1,6 +1,6 @@
 include ../config.mk
 
-CDEPS = wfs.c input.c dft.c rv.c herm.c conv.c
+CDEPS = wfs.c input.c dft.c rv.c herm.c conv.c range.c
 OBJS = $(CDEPS:.c=.o)
 
 default: libwfs.a

@@ -10,6 +10,7 @@ all:
 	cd isotropic; $(MAKE)
 	cd hyp2f1; $(MAKE)
 	cd eigen; $(MAKE)
+	cd range; $(MAKE)
 
 clean:
 	rm -f main *.o *~
@@ -22,4 +23,5 @@ clean:
 	cd isotropic; $(MAKE) clean
 	cd hyp2f1; $(MAKE) clean
 	cd eigen; $(MAKE) clean
+	cd range; $(MAKE) clean
 
