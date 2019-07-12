@@ -20,6 +20,7 @@ from KratosMultiphysics import DELTA_TIME
 from KratosMultiphysics import VELOCITY_X
 from KratosMultiphysics import VELOCITY_Y
 from KratosMultiphysics import VELOCITY_Z
+from KratosMultiphysics import Logger
 
 
 class Parameters(Mapping):
@@ -221,7 +222,7 @@ class ImposeWindInletProcess:
             setattr(self, name, value)
         with self.OpenFile() as file_:
             for key, value in file_.items():
-                if key in ['lx', 'ly', 'lz', 'log_z0', 'height', 'umean']:
+                if key in ['lx', 'ly', 'lz', 'log_z0', 'z', 'umean']:
                     setattr(self, key, value[0])
         self.model_part = Model[self.inlet_model_part_name]
         self.mean_profile = self.CreateLogMeanProfile()
@@ -247,7 +248,7 @@ class ImposeWindInletProcess:
         return h5py.File(self.wind_filename, 'r')
         
     def CreateLogMeanProfile(self, key=lambda node: node.Z):
-        z = self.height
+        z = self.z
         lz = self.lz
         log_z0 = self.log_z0
         umean = self.umean
@@ -299,3 +300,18 @@ class ImposeWindInletProcess:
                 for var, _ in self.mappers:
                     vel = node.GetSolutionStepValue(var)
                     node.SetSolutionStepValue(var, scal * vel)
+
+    def Check(self):
+        pass
+
+    def ExecuteBeforeSolutionLoop(self):
+        pass
+
+    def ExecuteFinalizeSolutionStep(self):
+        pass
+
+    def ExecuteBeforeOutputStep(self):
+        pass
+
+    def ExecuteAfterOutputStep(self):
+        pass
