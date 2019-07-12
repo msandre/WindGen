@@ -143,6 +143,7 @@ class SubGrid1D:
 
 
 Grid3D = namedtuple('Grid3D', ['x', 'y', 'z'])
+Grid2D = namedtuple('Grid2D', ['x', 'z'])
 
 
 class InletPanel3D:
@@ -182,6 +183,37 @@ class InletPanel3D:
             + weights[1] * self.cut_data[j+1, k]
             + weights[2] * self.cut_data[j+1, k+1]
             + weights[3] * self.cut_data[j, k+1]
+        )
+
+
+class InletPanel2D:
+
+    def __init__(self, grid, data):
+        self.grid = grid
+        self.data = data
+        self.dz = self.grid.z.step_size
+        self.z0 = self.grid.z.lower_bound
+
+    def update(self, pos):
+        i = self.grid.x.floor_index(pos)
+        tx = (pos-self.grid.x[i]) / self.grid.x.step_size
+        data_0 = self.data[i, self.grid.z.gslice]
+        data_1 = self.data[i+1, self.grid.z.gslice]
+        self.cut_data = (1.0 - tx) * data_0 + tx * data_1
+
+    def interpolate(self, node):
+        # xi and eta are local mesh cell coordinates in the interval [-1, 1].
+        xi = ((node.Z - self.z0) % self.dz) / self.dz
+        xi = 2.0 * (xi-0.5)
+        # Interpolate using linear shape functions.
+        weights = (
+            0.5 * (1.0-xi),
+            0.5 * (1.0+xi)
+        )
+        k = self.grid.z.floor_index(node.Z)
+        return (
+            weights[0] * self.cut_data[k]
+            + weights[1] * self.cut_data[k+1]
         )
 
 
@@ -230,7 +262,7 @@ class ImposeWindInletProcess:
             # In MPI we pin the file if the process has nodes on the inlet.
             # The mappers are only valid during the lifetime of the file.
             self.file_ = self.OpenFile()
-            self.mappers = self.Create3DMappers(self.file_)
+            self.mappers = self.CreateMappers(self.file_)
 
     def ExecuteInitialize(self):
         for node in self.inlet_nodes:
@@ -255,6 +287,25 @@ class ImposeWindInletProcess:
         bulk_wind_speed = umean * (log(lz/log_z0) - 1.0) / log(z/log_z0)
         friction_velocity = umean * 0.41 / log((z + log_z0) / log_z0)
         return LogMeanProfile(friction_velocity, log_z0, bulk_wind_speed)
+
+    def CreateMappers(self, file_):
+        if len(file_['u'].shape) == 2:
+            mappers = self.Create2DMappers(file_)
+        else:
+            mappers = self.Create3DMappers(file_)
+        return mappers
+
+    def Create2DMappers(self, file_):
+        nx, nz = file_['u'].shape
+        x_grid = RegularGrid1D(0., self.lx, nx)
+        z_grid = RegularGrid1D(self.z0, self.lz, nz)
+        z_extent = get_extent(self.inlet_nodes, key=lambda node: node.Z)
+        z_subgrid = SubGrid1D(z_grid, z_extent.lower, z_extent.upper)
+        grid = Grid2D(x_grid, z_subgrid)
+        # mappers become invalid after file_ is destructed.
+        mappers = ((VELOCITY_X, InletPanel2D(grid, file_['u'])),
+                   (VELOCITY_Z, InletPanel2D(grid, file_['w'])))
+        return mappers
 
     def Create3DMappers(self, file_):
         nx, ny, nz = file_['u'].shape

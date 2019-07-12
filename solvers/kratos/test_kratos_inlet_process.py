@@ -137,7 +137,44 @@ class TestInletPanel3D(unittest.TestCase):
         self.assertAlmostEqual(self.panel.interpolate(MagicMock(Y=1.5, Z=1.)), 0.15)
         self.assertAlmostEqual(self.panel.interpolate(MagicMock(Y=1., Z=1.5)), 0.4)
         self.assertAlmostEqual(self.panel.interpolate(MagicMock(Y=1.5, Z=1.5)), 0.325)
-    
+
+
+class TestInletPanel2D(unittest.TestCase):
+
+    def setUp(self):
+        grid_x = kratos_inlet_process.RegularGrid1D(0., 2., 3)
+        grid_z = kratos_inlet_process.RegularGrid1D(1., 1., 2)
+        sub_grid_z = kratos_inlet_process.SubGrid1D(grid_z, 1., 2.)
+        grid = kratos_inlet_process.Grid2D(grid_x, sub_grid_z)
+        data = array(
+            (
+                (0.2, 0.1),
+                (0.5, 0.2),
+                (0.4, 0.4)
+            )
+        )
+        self.panel = kratos_inlet_process.InletPanel2D(grid, data)
+
+    def test_update(self):
+        self.panel.update(0.)
+        self.assertAlmostEqual(self.panel.cut_data[0], 0.2)
+        self.assertAlmostEqual(self.panel.cut_data[1], 0.1)
+        self.panel.update(0.5)
+        self.assertAlmostEqual(self.panel.cut_data[0], 0.35)
+        self.assertAlmostEqual(self.panel.cut_data[1], 0.15)
+        self.panel.update(1.)
+        self.assertAlmostEqual(self.panel.cut_data[0], 0.5)
+        self.assertAlmostEqual(self.panel.cut_data[1], 0.2)
+        self.panel.update(1.5)
+        self.assertAlmostEqual(self.panel.cut_data[0], 0.45)
+        self.assertAlmostEqual(self.panel.cut_data[1], 0.3)
+
+    def test_interpolate(self):
+        self.panel.update(0.)
+        self.assertAlmostEqual(self.panel.interpolate(MagicMock(Z=1.)), 0.2)
+        self.assertAlmostEqual(self.panel.interpolate(MagicMock(Z=1.6)), 0.14)
+        self.assertAlmostEqual(self.panel.interpolate(MagicMock(Z=1.9)), 0.11)
+
 
 class TestLogMeanProfile(unittest.TestCase):
 
@@ -154,7 +191,15 @@ class TestLogMeanProfile(unittest.TestCase):
 
 class TestImposeWindInletProcess(unittest.TestCase):
 
-    data = array(
+    data2d = array(
+        (
+            (0.1, 0.0),
+            (0.4,-0.2),
+            (0.1, 0.1)
+        )
+    )
+
+    data3d = array(
         (
             ((0.2,-0.1), (0.1, 0.0)),
             ((0.2, 0.0), (0.4,-0.2)),
@@ -165,37 +210,61 @@ class TestImposeWindInletProcess(unittest.TestCase):
     class MockFile(dict, AbstractContextManager):
         pass
 
-    def setUp(self):
-        self.settings = {}
-        self.settings['inlet_model_part_name'] = 'inlet'
-        self.settings['inlet_position'] = 0.
-        self.settings['wind_filename'] = 'wind.h5'
-        self.settings['ramp_time'] = 10.
-        self.settings['y0'] = 0.
-        self.settings['z0'] = 0.
-        self.model = {'inlet':
-                      MagicMock(
-                          Nodes=[
-                              MagicMock(X=0.5, Y=0.5, Z=0.0)
-                          ],
-                          ProcessInfo={
-                              'DELTA_TIME': 0.1,
-                              'TIME': 0.0
-                          }
-                      )
-        }
-        self.mock_file = self.MockFile()
-        self.mock_file['lx'] = (2.,)
-        self.mock_file['ly'] = (1.,)
-        self.mock_file['lz'] = (1.,)
-        self.mock_file['log_z0'] = (0.02,)
-        self.mock_file['height'] = (20.,)
-        self.mock_file['umean'] = (12.3,)
-        self.mock_file['u'] = self.data
-        self.mock_file['v'] = self.data
-        self.mock_file['w'] = self.data
+    @staticmethod
+    def setup_settings(domain_size):
+        settings = {}
+        settings['inlet_model_part_name'] = 'inlet'
+        settings['inlet_position'] = 0.
+        settings['wind_filename'] = 'wind.h5'
+        settings['ramp_time'] = 10.
+        settings['z0'] = 0.
+        if domain_size == 3:
+            settings['y0'] = 0.
+        return settings
+
+    @staticmethod
+    def setup_model(domain_size):
+        if domain_size == 2:
+            nodes = [MagicMock(X=0.5, Z=0.5)]
+        else:
+            nodes = [MagicMock(X=0.5, Y=0.5, Z=0.0)]
+        model = {'inlet':
+                 MagicMock(
+                     Nodes=nodes,
+                     ProcessInfo={
+                         'DELTA_TIME': 0.1,
+                         'TIME': 0.0
+                     }
+                 )
+                }
+        return model
+
+    @staticmethod
+    def setup_file(domain_size):
+        mock_file = TestImposeWindInletProcess.MockFile()
+        mock_file['lx'] = (2.,)
+        if domain_size == 3:
+            mock_file['ly'] = (1.,)
+        mock_file['lz'] = (1.,)
+        mock_file['log_z0'] = (0.02,)
+        mock_file['z'] = (20.,)
+        mock_file['umean'] = (12.3,)
+        if domain_size == 2:
+            mock_file['u'] = TestImposeWindInletProcess.data2d
+            mock_file['w'] = TestImposeWindInletProcess.data2d
+        else:
+            mock_file['u'] = TestImposeWindInletProcess.data3d
+            mock_file['v'] = TestImposeWindInletProcess.data3d
+            mock_file['w'] = TestImposeWindInletProcess.data3d
+        return mock_file
+
+    def setup_test(self, domain_size):
+        self.settings = TestImposeWindInletProcess.setup_settings(domain_size)
+        self.model = TestImposeWindInletProcess.setup_model(domain_size)
+        self.mock_file = TestImposeWindInletProcess.setup_file(domain_size)
 
     def test_init(self):
+        self.setup_test(domain_size=3)
         with patch('kratos_inlet_process.ImposeWindInletProcess.OpenFile') as file_:
             file_.return_value = self.mock_file
             process = kratos_inlet_process.ImposeWindInletProcess(
@@ -208,11 +277,12 @@ class TestImposeWindInletProcess(unittest.TestCase):
             self.assertAlmostEqual(process.ly, 1.)
             self.assertAlmostEqual(process.lz, 1.)
             self.assertAlmostEqual(process.log_z0, 0.02)
-            self.assertAlmostEqual(process.height, 20.)
+            self.assertAlmostEqual(process.z, 20.)
             self.assertAlmostEqual(process.umean, 12.3)
             self.assertEqual(len(process.model_part.Nodes), 1)
             
     def test_create_log_mean_profile(self):
+        self.setup_test(domain_size=3)
         with patch('kratos_inlet_process.ImposeWindInletProcess.OpenFile') as file_:
             file_.return_value = self.mock_file
             process = kratos_inlet_process.ImposeWindInletProcess(
@@ -222,6 +292,7 @@ class TestImposeWindInletProcess(unittest.TestCase):
             self.assertAlmostEqual(mean_profile.wind_speed(node), 12.3, places=2)
     
     def test_update_inlet_position(self):
+        self.setup_test(domain_size=3)
         with patch('kratos_inlet_process.ImposeWindInletProcess.OpenFile') as file_:
             file_.return_value = self.mock_file
             process = kratos_inlet_process.ImposeWindInletProcess(
@@ -234,6 +305,7 @@ class TestImposeWindInletProcess(unittest.TestCase):
             self.assertAlmostEqual(process.inlet_position, 1.0)
 
     def test_create_3d_mappers(self):
+        self.setup_test(domain_size=3)
         with patch('kratos_inlet_process.ImposeWindInletProcess.OpenFile') as file_:
             file_.return_value = self.mock_file
             process = kratos_inlet_process.ImposeWindInletProcess(
@@ -246,6 +318,20 @@ class TestImposeWindInletProcess(unittest.TestCase):
             self.assertAlmostEqual(mapper_u.interpolate(MagicMock(Y=0.5, Z=0.5)), 0.05)
             mapper_u.update(0.5)
             self.assertAlmostEqual(mapper_u.interpolate(MagicMock(Y=0.5, Z=0.5)), 0.075)
+
+    def test_create_2d_mappers(self):
+        self.setup_test(domain_size=2)
+        with patch('kratos_inlet_process.ImposeWindInletProcess.OpenFile') as file_:
+            file_.return_value = self.mock_file
+            process = kratos_inlet_process.ImposeWindInletProcess(
+                self.model, self.settings)
+            self.assertEqual(process.mappers[0][0], 'VELOCITY_X')
+            self.assertEqual(process.mappers[1][0], 'VELOCITY_Z')
+            mapper_u = process.mappers[0][1]
+            mapper_u.update(process.inlet_position)
+            self.assertAlmostEqual(mapper_u.interpolate(MagicMock(Z=0.5)), 0.05)
+            mapper_u.update(0.5)
+            self.assertAlmostEqual(mapper_u.interpolate(MagicMock(Z=0.5)), 0.075)
 
 
 def main():
