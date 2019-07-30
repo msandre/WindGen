@@ -176,13 +176,15 @@ class InletPanel3D:
             0.25 * (1.0+xi) * (1.0+eta),
             0.25 * (1.0-xi) * (1.0+eta)
         )
-        j = self.grid.y.floor_index(node.Y)
-        k = self.grid.z.floor_index(node.Z)
+        j0 = self.grid.y.floor_index(node.Y)
+        j1 = self.grid.y.ceil_index(node.Y)
+        k0 = self.grid.z.floor_index(node.Z)
+        k1 = self.grid.z.ceil_index(node.Z)
         return (
-            weights[0] * self.cut_data[j, k]
-            + weights[1] * self.cut_data[j+1, k]
-            + weights[2] * self.cut_data[j+1, k+1]
-            + weights[3] * self.cut_data[j, k+1]
+            weights[0] * self.cut_data[j0, k0]
+            + weights[1] * self.cut_data[j1, k0]
+            + weights[2] * self.cut_data[j1, k1]
+            + weights[3] * self.cut_data[j0, k1]
         )
 
 
@@ -210,10 +212,11 @@ class InletPanel2D:
             0.5 * (1.0-xi),
             0.5 * (1.0+xi)
         )
-        k = self.grid.z.floor_index(node.Z)
+        k0 = self.grid.z.floor_index(node.Z)
+        k1 = self.grid.z.ceil_index(node.Z)
         return (
-            weights[0] * self.cut_data[k]
-            + weights[1] * self.cut_data[k+1]
+            weights[0] * self.cut_data[k0]
+            + weights[1] * self.cut_data[k1]
         )
 
 
@@ -273,8 +276,9 @@ class ImposeWindInletProcess:
         self.UpdateInletPosition()
         Logger.PrintInfo('ImposeWindInletProcess',
                          'inlet position = %e' % self.inlet_position)
-        self.AssignVelocity()
-        self.ApplyRamp()
+        if len(self.inlet_nodes) > 0:
+            self.AssignVelocity()
+            self.ApplyRamp()
 
     def OpenFile(self):
         return h5py.File(self.wind_filename, 'r')
