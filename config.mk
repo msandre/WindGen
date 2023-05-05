@@ -1,4 +1,4 @@
-WFS_ROOT              := <path_to_repository>/WindGen
+WFS_ROOT              := /<path_to_software>/WindGen
 
 # ----------------------------------------------------------------------
 #                               NO MPI
@@ -21,11 +21,11 @@ LDFLAGS               += -lwfs -lfftw3
 # ----------------------------------------------------------------------
 #                               HDF5
 # ----------------------------------------------------------------------
-HDF5_ROOT              := /usr/lib/x86_64-linux-gnu
-ZLIB_ROOT              := /usr/lib/x86_64-linux-gnu
-SZIP_ROOT              := /usr/lib/x86_64-linux-gnu
-CFLAGS                 += -I/usr/include/hdf5/serial -DHAVE_HDF5
-LDFLAGS                += $(HDF5_ROOT)/hdf5/serial/libhdf5.a
+HDF5_ROOT              := /<path_to_software>/HDF5/HDF5
+ZLIB_ROOT              := /<path_to_software>/HDF5/zlib
+SZIP_ROOT              := /<path_to_software>/HDF5/szip
+CFLAGS                 += -DHAVE_HDF5 -I $(HDF5_ROOT)/include
+LDFLAGS                += $(HDF5_ROOT)/lib/libhdf5.a $(ZLIB_ROOT)/lib/libz.a $(SZIP_ROOT)/lib/libsz.a
 # ----------------------------------------------------------------------
 
 LDFLAGS                += -pthread -lsz -lz -ldl -lm
