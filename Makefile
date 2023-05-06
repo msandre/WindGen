@@ -5,7 +5,7 @@ all:
 	cd test; $(MAKE)
 
 fftw:
-	cd fftw-3.3.3;                                                        \
+	cd fftw-3.3.10;                                                        \
 	./configure CC=$(CC) MPICC=$(CC) $(FFTW_CONFIG_FLAGS);                \
 	 make; make install
 
