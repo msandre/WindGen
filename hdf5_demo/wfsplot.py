@@ -12,10 +12,10 @@ from pylab import *
 argc = len(sys.argv)
 
 if not argc in [2,3]:
-    print "Try 'python wfsplot.py help' for more information."
+    print("Try 'python wfsplot.py help' for more information.")
 elif argc == 2:
     if sys.argv[1] == "help":
-        print "Usage: python wfsplot.py COMMAND [FILE]\n",                     \
+        print("Usage: python wfsplot.py COMMAND [FILE]\n",                     \
               "\n",                                                            \
               "FILE is an HDF5 formatted results file created by the\n",       \
               "Wind Field Simulation library.\n",                              \
@@ -23,9 +23,9 @@ elif argc == 2:
               "COMMAND      Description:\n",                                   \
               "help         print this help message and exit\n",               \
               "intensity    plot the turbulence intensity in FILE\n"           \
-              "spectra      plot the spectra in FILE\n"
+              "spectra      plot the spectra in FILE\n")
     else:
-        print "Try 'python wfsplot.py help' for more information."
+        print("Try 'python wfsplot.py help' for more information.")
 elif argc == 3:
     cmd   = sys.argv[1]
     fname = sys.argv[2]
@@ -48,9 +48,9 @@ elif argc == 3:
         Iu = su / uz
         Iv = sv / uz
         Iw = sw / uz
+        
         fig = figure()
         ax = fig.add_subplot(111,aspect="25")
-        ax.hold(True)
         ax.plot(Iu*100.0,s/H,"b",label=r"$I_u$")
         ax.plot(Iv*100.0,s/H,"r",label=r"$I_v$")
         ax.plot(Iw*100.0,s/H,"m",label=r"$I_w$")
@@ -62,6 +62,7 @@ elif argc == 3:
         ax.yaxis.grid(color='gray', linestyle='dashed')
         ax.legend(loc="upper right")
         savefig("intensity.png")
+        
     elif cmd == "spectra":
         Fu_exact = lambda k1z : 52.5 * k1z / (1. + 33. * k1z)**(5./3.)
         Fv_exact = lambda k1z : 8.5 * k1z / (1. + 9.5 * k1z)**(5./3.)
@@ -94,17 +95,18 @@ elif argc == 3:
         nx = sp[0]
         ny = sp[1]
         nz = sp[2]
-        Fu = zeros(nx/2+1)
-        Fv = zeros(nx/2+1)
-        Fw = zeros(nx/2+1)
-        kx = array([2.0 * pi * i / lx for i in range(nx/2+1)])
+        Fu = zeros(int(nx/2)+1)
+        Fv = zeros(int(nx/2)+1)
+        Fw = zeros(int(nx/2)+1)
+        kx = array([2.0 * pi * i / lx for i in range(int(nx/2)+1)])
         kxz = kx * z / (2.0 * pi)
         count = 0
-        for j in range(0,ny,ny/8):
-            for k in range(0,nz,nz/8):
-                Fu = Fu + kx * abs(fft(u[:,j,k])[:nx/2+1])**2 * lx / nx**2 / (2.0 * pi) / utau**2
-                Fv = Fv + kx * abs(fft(v[:,j,k])[:nx/2+1])**2 * lx / nx**2 / (2.0 * pi) / utau**2
-                Fw = Fw + kx * abs(fft(w[:,j,k])[:nx/2+1])**2 * lx / nx**2 / (2.0 * pi) / utau**2
+        sampling_rate = 3
+        for j in range(0,ny,sampling_rate):
+            for k in range(0,nz,sampling_rate):
+                Fu = Fu + kx * abs(fft(u[:,j,k])[:int(nx/2)+1])**2 * lx / nx**2 / (2.0 * pi) / utau**2
+                Fv = Fv + kx * abs(fft(v[:,j,k])[:int(nx/2)+1])**2 * lx / nx**2 / (2.0 * pi) / utau**2
+                Fw = Fw + kx * abs(fft(w[:,j,k])[:int(nx/2)+1])**2 * lx / nx**2 / (2.0 * pi) / utau**2
                 count = count + 1
         if count > 0:
             Fu = Fu / count
@@ -112,7 +114,6 @@ elif argc == 3:
             Fw = Fw / count
         fig = figure()
         ax = fig.add_subplot(111)
-        ax.hold(True)
         ax.loglog(kxz, Fu, '--b', label='wfs')
         ax.loglog(kxz_fit, Fu_fit, 'or', label='Fit')
         ax.loglog(kxz, Fu_exact(kxz), 'k', label='Exact')
@@ -120,9 +121,9 @@ elif argc == 3:
         ax.set_xlabel(r"$\mathrm{fz}/U_0$")
         ax.legend(loc='lower right')
         savefig('Fu.png')
+        
         fig = figure()
         ax = fig.add_subplot(111)
-        ax.hold(True)
         ax.loglog(kxz, Fv, '--b', label='wfs')
         ax.loglog(kxz_fit, Fv_fit, 'or', label='Fit')
         ax.loglog(kxz, Fv_exact(kxz), 'k', label='Exact')
@@ -130,9 +131,9 @@ elif argc == 3:
         ax.set_xlabel(r"$\mathrm{fz}/U_0$")
         ax.legend(loc='lower right')
         savefig('Fv.png')
+        
         fig = figure()
         ax = fig.add_subplot(111)
-        ax.hold(True)
         ax.loglog(kxz, Fw, '--b', label='wfs')
         ax.loglog(kxz_fit, Fw_fit, 'or', label='Fit')
         ax.loglog(kxz, Fw_exact(kxz), 'k', label='Exact')
@@ -141,5 +142,5 @@ elif argc == 3:
         ax.legend(loc='lower right')
         savefig('Fw.png')
     else:
-        print "COMMAND not recognized!"
-        print "Try 'python wfsplot.py help' for more information."
+        print("COMMAND not recognized!")
+        print("Try 'python wfsplot.py help' for more information.")
